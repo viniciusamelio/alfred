@@ -1,3 +1,4 @@
 example/
 # Alfred CLI state and configuration
 .alfred/
+alfred
