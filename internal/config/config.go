@@ -16,7 +16,8 @@ type Config struct {
 }
 
 type Repository struct {
-	Alias string `yaml:"alias"`
+	Name  string `yaml:"name"`
+	Alias string `yaml:"alias,omitempty"`
 	Path  string `yaml:"path"`
 }
 
@@ -97,7 +98,8 @@ func (c *Config) Save() error {
 
 func (c *Config) GetRepoByAlias(alias string) (*Repository, error) {
 	for _, repo := range c.Repos {
-		if repo.Alias == alias {
+		// Check alias first (if set), then name
+		if (repo.Alias != "" && repo.Alias == alias) || (repo.Alias == "" && repo.Name == alias) {
 			return &repo, nil
 		}
 	}
@@ -152,7 +154,8 @@ func (c *Config) AddContext(name string, repoAliases []string) error {
 	for _, alias := range repoAliases {
 		found := false
 		for _, repo := range c.Repos {
-			if repo.Alias == alias {
+			// Check both alias and name
+			if (repo.Alias != "" && repo.Alias == alias) || (repo.Alias == "" && repo.Name == alias) {
 				found = true
 				break
 			}
@@ -215,7 +218,12 @@ func (c *Config) IsContextContainsMaster(contextName string) bool {
 func (c *Config) GetRepoAliases() []string {
 	aliases := make([]string, len(c.Repos))
 	for i, repo := range c.Repos {
-		aliases[i] = repo.Alias
+		// Return alias if set, otherwise return name
+		if repo.Alias != "" {
+			aliases[i] = repo.Alias
+		} else {
+			aliases[i] = repo.Name
+		}
 	}
 	return aliases
 }
@@ -243,7 +251,11 @@ func (c *Config) GetNonMasterReposForContext(contextName string) ([]*Repository,
 
 	var nonMasterRepos []*Repository
 	for _, repo := range contextRepos {
-		if repo.Alias != c.Master {
+		repoIdentifier := repo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = repo.Name
+		}
+		if repoIdentifier != c.Master {
 			nonMasterRepos = append(nonMasterRepos, repo)
 		}
 	}

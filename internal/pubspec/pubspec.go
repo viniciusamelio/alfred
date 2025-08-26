@@ -171,3 +171,29 @@ func (p *PubspecYaml) UpdatePathDependency(depName, newPath string) error {
 	
 	return nil
 }
+
+// GetPackageName extracts the package name from pubspec.yaml content
+func (p *PubspecYaml) GetPackageName() (string, error) {
+	// Pattern to find the name field
+	namePattern := regexp.MustCompile(`(?m)^name:\s*(.+)$`)
+	matches := namePattern.FindStringSubmatch(p.content)
+	
+	if len(matches) < 2 {
+		return "", fmt.Errorf("package name not found in pubspec.yaml")
+	}
+	
+	name := strings.TrimSpace(matches[1])
+	// Remove quotes if present
+	name = strings.Trim(name, "\"'")
+	
+	return name, nil
+}
+
+// ExtractPackageNameFromFile extracts package name directly from a pubspec.yaml file path
+func ExtractPackageNameFromFile(pubspecPath string) (string, error) {
+	pubspec, err := LoadPubspec(filepath.Dir(pubspecPath))
+	if err != nil {
+		return "", err
+	}
+	return pubspec.GetPackageName()
+}

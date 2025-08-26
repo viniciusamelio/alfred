@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/viniciusamelio/alfred/internal/config"
 	"github.com/viniciusamelio/alfred/internal/context"
+	"github.com/viniciusamelio/alfred/internal/pubspec"
 	"github.com/viniciusamelio/alfred/internal/tui"
 )
 
@@ -77,22 +78,41 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 		return fmt.Errorf("failed to select master repository: %w", err)
 	}
 	
+	// Find the selected package to get the correct identifier
+	var masterRepo *DartPackage
+	for _, pkg := range packages {
+		if pkg.Name == masterAlias {
+			masterRepo = &pkg
+			break
+		}
+	}
+	
+	if masterRepo == nil {
+		return fmt.Errorf("master repository not found in packages")
+	}
+	
+	// Use alias if set, otherwise use name
+	masterIdentifier := masterRepo.Alias
+	if masterIdentifier == "" {
+		masterIdentifier = masterRepo.Name
+	}
+	
 	// Create alfred configuration
-	if err := c.createAlfredConfig(packages, masterAlias); err != nil {
+	if err := c.createAlfredConfig(packages, masterIdentifier); err != nil {
 		return fmt.Errorf("failed to create alfred configuration: %w", err)
 	}
 	
 	fmt.Printf("\n✅ Alfred configured successfully with %d repositories\n", len(packages))
-	fmt.Printf("✅ Master repository: %s\n", masterAlias)
+	fmt.Printf("✅ Master repository: %s\n", masterIdentifier)
 	fmt.Println("✅ You can now use 'alfred switch <context-name>' to create and switch contexts")
 	
 	return nil
 }
 
 type DartPackage struct {
+	Name  string
 	Alias string
 	Path  string
-	Name  string
 }
 
 func (c *ScanCmd) scanForDartPackages() ([]DartPackage, error) {
@@ -114,44 +134,22 @@ func (c *ScanCmd) scanForDartPackages() ([]DartPackage, error) {
 		}
 		
 		// Read package name from pubspec.yaml
-		packageName, err := c.extractPackageName(pubspecPath)
+		packageName, err := pubspec.ExtractPackageNameFromFile(pubspecPath)
 		if err != nil {
 			fmt.Printf("Warning: Could not read package name from %s: %v\n", pubspecPath, err)
 			continue
 		}
 		
 		packages = append(packages, DartPackage{
-			Alias: packageName,
-			Path:  "./" + entry.Name(),
 			Name:  packageName,
+			Alias: "", // Will be set by user if they want a nickname
+			Path:  "./" + entry.Name(),
 		})
 	}
 	
 	return packages, nil
 }
 
-func (c *ScanCmd) extractPackageName(pubspecPath string) (string, error) {
-	data, err := os.ReadFile(pubspecPath)
-	if err != nil {
-		return "", err
-	}
-	
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "name:") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				name := strings.TrimSpace(parts[1])
-				// Remove quotes if present
-				name = strings.Trim(name, "\"'")
-				return name, nil
-			}
-		}
-	}
-	
-	return "", fmt.Errorf("package name not found in pubspec.yaml")
-}
 
 
 func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string) error {
@@ -165,7 +163,10 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 	var configContent strings.Builder
 	configContent.WriteString("repos:\n")
 	for _, pkg := range packages {
-		configContent.WriteString(fmt.Sprintf("  - alias: %s\n", pkg.Alias))
+		configContent.WriteString(fmt.Sprintf("  - name: %s\n", pkg.Name))
+		if pkg.Alias != "" {
+			configContent.WriteString(fmt.Sprintf("    alias: %s\n", pkg.Alias))
+		}
 		configContent.WriteString(fmt.Sprintf("    path: %s\n", pkg.Path))
 	}
 	
@@ -262,11 +263,11 @@ func (c *InitCmd) Run(ctx *kong.Context) error {
 
 	// Create sample config
 	sampleConfig := `repos:
-  - alias: core
+  - name: core
     path: ./core
-  - alias: ui
+  - name: ui
     path: ./ui
-  - alias: app
+  - name: app
     path: ./app
 
 master: app
