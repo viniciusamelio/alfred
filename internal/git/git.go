@@ -218,3 +218,32 @@ func (g *GitRepo) GetWorktreeForContext(contextName string) string {
 	repoDir := filepath.Base(g.Path)
 	return filepath.Join(filepath.Dir(g.Path), fmt.Sprintf("%s-%s", repoDir, contextName))
 }
+
+// HasStashForContext checks if there's a stash with the given context name
+func (g *GitRepo) HasStashForContext(contextName string) (bool, error) {
+	stashes, err := g.ListStashes()
+	if err != nil {
+		return false, err
+	}
+	
+	stashMessage := fmt.Sprintf("alfred-context-%s", contextName)
+	for _, stash := range stashes {
+		if strings.Contains(stash, stashMessage) {
+			return true, nil
+		}
+	}
+	
+	return false, nil
+}
+
+// StashForContext creates a stash with context-specific message
+func (g *GitRepo) StashForContext(contextName string) error {
+	message := fmt.Sprintf("alfred-context-%s", contextName)
+	return g.StashChanges(message)
+}
+
+// PopStashForContext pops the stash for a specific context
+func (g *GitRepo) PopStashForContext(contextName string) error {
+	stashMessage := fmt.Sprintf("alfred-context-%s", contextName)
+	return g.PopStash(stashMessage)
+}

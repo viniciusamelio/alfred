@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Repos    []Repository        `yaml:"repos"`
-	Master   string              `yaml:"master"`
-	Mode     string              `yaml:"mode"`
-	Contexts map[string][]string `yaml:"contexts"`
+	Repos      []Repository        `yaml:"repos"`
+	Master     string              `yaml:"master"`
+	Mode       string              `yaml:"mode"`
+	MainBranch string              `yaml:"main_branch,omitempty"`
+	Contexts   map[string][]string `yaml:"contexts"`
 }
 
 type Repository struct {
@@ -73,6 +74,11 @@ func LoadConfig() (*Config, error) {
 	// Validate mode
 	if config.Mode != ModeBranch && config.Mode != ModeWorktree {
 		return nil, fmt.Errorf("invalid mode '%s'. Must be 'branch' or 'worktree'", config.Mode)
+	}
+
+	// Set default main branch if not specified
+	if config.MainBranch == "" {
+		config.MainBranch = "main"
 	}
 
 	return &config, nil
@@ -269,4 +275,18 @@ func (c *Config) IsBranchMode() bool {
 
 func (c *Config) IsWorktreeMode() bool {
 	return c.Mode == ModeWorktree
+}
+
+// GetMainBranch returns the configured main branch name
+func (c *Config) GetMainBranch() string {
+	if c.MainBranch == "" {
+		return "main"
+	}
+	return c.MainBranch
+}
+
+// SetMainBranch sets the main branch name and saves the config
+func (c *Config) SetMainBranch(branchName string) error {
+	c.MainBranch = branchName
+	return c.Save()
 }

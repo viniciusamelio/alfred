@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -15,16 +16,18 @@ import (
 )
 
 var CLI struct {
-	Debug   bool          `help:"Enable debug mode" default:"false"`
-	Context ContextCmd    `cmd:"" help:"Manage project contexts"`
-	Init    InitCmd       `cmd:"" help:"Initialize alfred in current directory"`
-	Scan    ScanCmd       `cmd:"" help:"Scan directory and auto-configure repositories"`
-	Status  StatusCmd     `cmd:"" help:"Show current context and repository status"`
-	List    ListCmd       `cmd:"" help:"List available contexts"`
-	Switch  SwitchCmd     `cmd:"" help:"Switch to a different context"`
-	Create  CreateCmd     `cmd:"" help:"Create a new context"`
-	Delete  DeleteCmd     `cmd:"" help:"Delete contexts"`
-	Version VersionCmd    `cmd:"" help:"Show version information"`
+	Debug      bool           `help:"Enable debug mode" default:"false"`
+	Context    ContextCmd     `cmd:"" help:"Manage project contexts"`
+	Init       InitCmd        `cmd:"" help:"Initialize alfred in current directory"`
+	Scan       ScanCmd        `cmd:"" help:"Scan directory and auto-configure repositories"`
+	Status     StatusCmd      `cmd:"" help:"Show current context and repository status"`
+	List       ListCmd        `cmd:"" help:"List available contexts"`
+	Switch     SwitchCmd      `cmd:"" help:"Switch to a different context"`
+	Create     CreateCmd      `cmd:"" help:"Create a new context"`
+	Delete     DeleteCmd      `cmd:"" help:"Delete contexts"`
+	Prepare    PrepareCmd     `cmd:"" help:"Prepare repository for production by reverting to git dependencies"`
+	MainBranch MainBranchCmd  `cmd:"" help:"Set the main branch used when switching to main context"`
+	Version    VersionCmd     `cmd:"" help:"Show version information"`
 }
 
 type ContextCmd struct {
@@ -98,12 +101,14 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 	}
 	
 	// Create alfred configuration
-	if err := c.createAlfredConfig(packages, masterIdentifier); err != nil {
+	mainBranch, err := c.createAlfredConfig(packages, masterIdentifier)
+	if err != nil {
 		return fmt.Errorf("failed to create alfred configuration: %w", err)
 	}
 	
 	fmt.Printf("\n✅ Alfred configured successfully with %d repositories\n", len(packages))
 	fmt.Printf("✅ Master repository: %s\n", masterIdentifier)
+	fmt.Printf("✅ Main branch: %s\n", mainBranch)
 	fmt.Println("✅ You can now use 'alfred switch <context-name>' to create and switch contexts")
 	
 	return nil
@@ -150,13 +155,33 @@ func (c *ScanCmd) scanForDartPackages() ([]DartPackage, error) {
 	return packages, nil
 }
 
+// promptForMainBranch prompts the user for the main branch name
+func promptForMainBranch() (string, error) {
+	fmt.Println("\nSet the main branch name:")
+	fmt.Println("This branch will be used when running 'alfred switch main'")
+	fmt.Print("Enter main branch name (default: main): ")
+	
+	var branchName string
+	fmt.Scanln(&branchName)
+	
+	if branchName == "" {
+		branchName = "main"
+	}
+	
+	return branchName, nil
+}
 
-
-func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string) error {
+func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string) (string, error) {
 	// Create .alfred directory
 	alfredDir := filepath.Join(".", ".alfred")
 	if err := os.MkdirAll(alfredDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .alfred directory: %w", err)
+		return "", fmt.Errorf("failed to create .alfred directory: %w", err)
+	}
+	
+	// Get main branch from user
+	mainBranch, err := promptForMainBranch()
+	if err != nil {
+		return "", fmt.Errorf("failed to get main branch: %w", err)
 	}
 	
 	// Create config
@@ -172,11 +197,12 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 	
 	configContent.WriteString(fmt.Sprintf("\nmaster: %s\n", masterAlias))
 	configContent.WriteString("mode: worktree\n")
+	configContent.WriteString(fmt.Sprintf("main_branch: %s\n", mainBranch))
 	configContent.WriteString("\ncontexts: {}\n")
 	
 	configPath := filepath.Join(alfredDir, "alfred.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent.String()), 0644); err != nil {
-		return fmt.Errorf("failed to write alfred.yaml: %w", err)
+		return "", fmt.Errorf("failed to write alfred.yaml: %w", err)
 	}
 	
 	// Update .gitignore
@@ -187,7 +213,7 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 		fmt.Println("✅ Updated .gitignore to ignore .alfred directory")
 	}
 	
-	return nil
+	return mainBranch, nil
 }
 
 func (c *ScanCmd) updateGitignore() error {
@@ -261,8 +287,14 @@ func (c *InitCmd) Run(ctx *kong.Context) error {
 	}
 	fmt.Println("✅ Created .alfred directory")
 
-	// Create sample config
-	sampleConfig := `repos:
+	// Get main branch from user
+	mainBranch, err := promptForMainBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get main branch: %w", err)
+	}
+
+	// Create sample config with user's main branch
+	sampleConfig := fmt.Sprintf(`repos:
   - name: core
     path: ./core
   - name: ui
@@ -272,6 +304,7 @@ func (c *InitCmd) Run(ctx *kong.Context) error {
 
 master: app
 mode: worktree
+main_branch: %s
 
 contexts:
   feature-1:
@@ -281,7 +314,7 @@ contexts:
     - ui
     - app
     - core
-`
+`, mainBranch)
 
 	if err := os.WriteFile(configPath, []byte(sampleConfig), 0644); err != nil {
 		return fmt.Errorf("failed to create alfred.yaml: %w", err)
@@ -298,6 +331,7 @@ contexts:
 
 	fmt.Println()
 	fmt.Println("✅ Alfred initialized with sample configuration")
+	fmt.Printf("✅ Main branch: %s\n", mainBranch)
 	fmt.Println("Edit .alfred/alfred.yaml to configure your repositories and contexts.")
 	return nil
 }
@@ -715,6 +749,149 @@ func (c *DeleteCmd) Run(ctx *kong.Context) error {
 	}
 
 	fmt.Printf("✅ Successfully deleted contexts: %s\n", strings.Join(targetContexts, ", "))
+	return nil
+}
+
+type PrepareCmd struct {
+	Repository string `arg:"" help:"Repository to prepare (alias or name). If not specified, prepares current master repository" optional:"true"`
+}
+
+func (c *PrepareCmd) Run(ctx *kong.Context) error {
+	logger := log.Default()
+	
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	var targetRepo *config.Repository
+
+	if c.Repository != "" {
+		// User specified a repository
+		targetRepo, err = cfg.GetRepoByAlias(c.Repository)
+		if err != nil {
+			return fmt.Errorf("repository '%s' not found", c.Repository)
+		}
+	} else {
+		// Use master repository if configured
+		targetRepo, err = cfg.GetMasterRepo()
+		if err != nil {
+			return fmt.Errorf("no master repository configured and no repository specified")
+		}
+	}
+
+	// Load pubspec.yaml from the target repository
+	pubspecFile, err := pubspec.LoadPubspec(targetRepo.Path)
+	if err != nil {
+		return fmt.Errorf("failed to load pubspec.yaml from %s: %w", targetRepo.Path, err)
+	}
+
+	repoIdentifier := targetRepo.Alias
+	if repoIdentifier == "" {
+		repoIdentifier = targetRepo.Name
+	}
+
+	fmt.Printf("Preparing %s for production by reverting to git dependencies...\n", repoIdentifier)
+
+	// Get all dependencies that might need to be reverted
+	// Check for dependencies with commented git configuration
+	dependenciesReverted := 0
+	
+	// Get all repositories from config to check for dependencies
+	allRepos := cfg.Repos
+	for _, repo := range allRepos {
+		dependencyName := repo.Name
+		
+		// Try to uncomment git dependency and remove path
+		if err := pubspecFile.UncommentGitDependencyAndRemovePath(dependencyName); err != nil {
+			logger.Debugf("No commented git dependency found for %s in %s: %v", 
+				dependencyName, repoIdentifier, err)
+		} else {
+			dependenciesReverted++
+			fmt.Printf("  ✅ Reverted %s dependency to git reference\n", dependencyName)
+		}
+	}
+	
+	if dependenciesReverted == 0 {
+		fmt.Printf("⚠️  No dependencies to revert in %s. Repository may already be prepared.\n", repoIdentifier)
+		return nil
+	}
+
+	// Save the changes
+	if err := pubspecFile.Save(); err != nil {
+		return fmt.Errorf("failed to save pubspec.yaml: %w", err)
+	}
+
+	fmt.Printf("✅ Successfully prepared %s - all dependencies reverted to git references\n", repoIdentifier)
+	fmt.Printf("✅ Repository is now ready for production deployment\n")
+
+	// Optionally run flutter pub get
+	fmt.Print("Run 'flutter pub get' to update dependencies? (y/N): ")
+	var response string
+	fmt.Scanln(&response)
+
+	if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
+		cmd := exec.Command("flutter", "pub", "get")
+		cmd.Dir = targetRepo.Path
+		
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("⚠️  flutter pub get failed: %v\nOutput: %s\n", err, string(output))
+		} else {
+			fmt.Println("✅ Dependencies updated successfully")
+		}
+	}
+
+	return nil
+}
+
+type MainBranchCmd struct {
+	BranchName string `arg:"" help:"Branch name to set as main branch" optional:"true"`
+}
+
+func (c *MainBranchCmd) Run(ctx *kong.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	var branchName string
+
+	if c.BranchName != "" {
+		// Branch name provided as argument
+		branchName = c.BranchName
+	} else {
+		// No branch name provided, use TUI to get input
+		inputBranch, err := tui.RunMainBranchInput()
+		if err != nil {
+			// If TUI fails (no TTY), ask for input via prompt
+			if strings.Contains(err.Error(), "TTY") || strings.Contains(err.Error(), "tty") {
+				fmt.Printf("Enter the main branch name (default: main): ")
+				fmt.Scanln(&branchName)
+				if branchName == "" {
+					branchName = "main"
+				}
+			} else {
+				return fmt.Errorf("failed to get main branch input: %w", err)
+			}
+		} else {
+			branchName = inputBranch
+		}
+	}
+
+	// Validate branch name
+	if branchName == "" {
+		return fmt.Errorf("branch name cannot be empty")
+	}
+
+	// Set the main branch in config
+	if err := cfg.SetMainBranch(branchName); err != nil {
+		return fmt.Errorf("failed to set main branch: %w", err)
+	}
+
+	fmt.Printf("✅ Main branch set to: %s\n", branchName)
+	fmt.Printf("Now 'alfred switch main' will switch all repositories to the '%s' branch\n", branchName)
+
 	return nil
 }
 

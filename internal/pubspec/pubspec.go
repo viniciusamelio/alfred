@@ -197,3 +197,68 @@ func ExtractPackageNameFromFile(pubspecPath string) (string, error) {
 	}
 	return pubspec.GetPackageName()
 }
+
+// CommentGitDependencyAndAddPath comments out git dependency and adds path dependency
+func (p *PubspecYaml) CommentGitDependencyAndAddPath(depName, localPath string) error {
+	// Pattern to find git dependency block for the specified dependency
+	gitPattern := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n(\s+)git:\s*\n(\s+url:.*\n)(\s+ref:.*\n)?`)
+	
+	if !gitPattern.MatchString(p.content) {
+		return fmt.Errorf("dependency '%s' is not a git dependency", depName)
+	}
+
+	// Replace git dependency with commented git + new path
+	replacement := func(match string) string {
+		lines := strings.Split(strings.TrimSuffix(match, "\n"), "\n")
+		var result strings.Builder
+		
+		// Add path dependency first
+		result.WriteString(fmt.Sprintf("%s:\n", depName))
+		result.WriteString(fmt.Sprintf("    path: %s\n", localPath))
+		
+		// Comment out the original git dependency
+		for _, line := range lines {
+			result.WriteString("  # ")
+			result.WriteString(line)
+			result.WriteString("\n")
+		}
+		
+		return result.String()
+	}
+	
+	p.content = gitPattern.ReplaceAllStringFunc(p.content, replacement)
+	return nil
+}
+
+// UncommentGitDependencyAndRemovePath uncomments git dependency and removes path dependency  
+func (p *PubspecYaml) UncommentGitDependencyAndRemovePath(depName string) error {
+	// Pattern to find the path dependency followed by commented git dependency
+	pathAndCommentedGitPattern := regexp.MustCompile(`(?ms)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n\s*path:.*\n(\s*#\s*` + regexp.QuoteMeta(depName) + `:\s*\n\s*#\s*git:\s*\n(\s*#\s*url:.*\n)(\s*#\s*ref:.*\n)?)`)
+	
+	match := pathAndCommentedGitPattern.FindStringSubmatch(p.content)
+	if len(match) == 0 {
+		return fmt.Errorf("dependency '%s' pattern not found", depName)
+	}
+	
+	// Build the restored git dependency
+	var gitDep strings.Builder
+	gitDep.WriteString(fmt.Sprintf("%s:\n", depName))
+	gitDep.WriteString("  git:\n")
+	
+	// Extract and restore URL line
+	urlLine := match[3] // url line with # prefix  
+	// Remove leading # and whitespace, but preserve the actual content
+	cleanUrl := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(urlLine), "#"))
+	gitDep.WriteString(fmt.Sprintf("    %s\n", cleanUrl))
+	
+	// Extract and restore ref line if exists
+	if len(match) > 4 && match[4] != "" {
+		refLine := match[4] // ref line with # prefix
+		cleanRef := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(refLine), "#"))
+		gitDep.WriteString(fmt.Sprintf("    %s\n", cleanRef))
+	}
+	
+	// Replace the entire block with just the git dependency
+	p.content = pathAndCommentedGitPattern.ReplaceAllString(p.content, gitDep.String())
+	return nil
+}

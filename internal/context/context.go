@@ -11,6 +11,7 @@ import (
 	"github.com/viniciusamelio/alfred/internal/config"
 	"github.com/viniciusamelio/alfred/internal/git"
 	"github.com/viniciusamelio/alfred/internal/pubspec"
+	"github.com/viniciusamelio/alfred/internal/tui"
 	"github.com/viniciusamelio/alfred/internal/worktree"
 )
 
@@ -216,8 +217,13 @@ func (m *Manager) switchContextWorktreeMode(contextName string, currentContext s
 func (m *Manager) switchMasterRepoToContext(masterRepo *config.Repository, contextName string) error {
 	gitRepo := git.NewGitRepo(masterRepo.Path)
 	
+	repoIdentifier := masterRepo.Alias
+	if repoIdentifier == "" {
+		repoIdentifier = masterRepo.Name
+	}
+	
 	if !gitRepo.IsGitRepo() {
-		return fmt.Errorf("master repository %s is not a git repository", masterRepo.Alias)
+		return fmt.Errorf("master repository %s is not a git repository", repoIdentifier)
 	}
 
 	// Check if branch exists
@@ -228,16 +234,21 @@ func (m *Manager) switchMasterRepoToContext(masterRepo *config.Repository, conte
 
 	if !branchExists {
 		// Create new branch from current branch
-		m.logger.Infof("Creating new branch %s in master repo %s", contextName, masterRepo.Alias)
+		m.logger.Infof("Creating new branch %s in master repo %s", contextName, repoIdentifier)
 		if err := gitRepo.CreateBranch(contextName, "HEAD"); err != nil {
 			return fmt.Errorf("failed to create branch: %w", err)
 		}
 	} else {
 		// Switch to existing branch
-		m.logger.Infof("Switching to existing branch %s in master repo %s", contextName, masterRepo.Alias)
+		m.logger.Infof("Switching to existing branch %s in master repo %s", contextName, repoIdentifier)
 		if err := gitRepo.CheckoutBranch(contextName); err != nil {
 			return fmt.Errorf("failed to checkout branch: %w", err)
 		}
+	}
+
+	// Restore stash if switching from main to another context
+	if err := m.handleMasterRepoStashRestore(contextName); err != nil {
+		m.logger.Warnf("Failed to restore stash in master repo: %v", err)
 	}
 
 	return nil
@@ -279,17 +290,38 @@ func (m *Manager) switchRepoToContext(repo *config.Repository, contextName strin
 }
 
 func (m *Manager) switchRepoToMainBranch(gitRepo *git.GitRepo, repo *config.Repository) error {
-	// Try to determine the main branch name (main, master, develop, etc.)
+	// Get the configured main branch name
+	configuredMainBranch := m.config.GetMainBranch()
+	
+	// First, try the configured main branch
+	branchExists, err := gitRepo.BranchExists(configuredMainBranch)
+	if err == nil && branchExists {
+		m.logger.Infof("Switching repo %s to configured main branch: %s", repo.Alias, configuredMainBranch)
+		if err := gitRepo.CheckoutBranch(configuredMainBranch); err != nil {
+			return fmt.Errorf("failed to checkout main branch %s: %w", configuredMainBranch, err)
+		}
+		return nil
+	}
+	
+	// If configured main branch doesn't exist, try common alternatives
 	mainBranchCandidates := []string{"main", "master", "develop"}
 	
-	for _, branchName := range mainBranchCandidates {
+	// Remove the configured branch from candidates to avoid duplicates
+	var filteredCandidates []string
+	for _, candidate := range mainBranchCandidates {
+		if candidate != configuredMainBranch {
+			filteredCandidates = append(filteredCandidates, candidate)
+		}
+	}
+	
+	for _, branchName := range filteredCandidates {
 		branchExists, err := gitRepo.BranchExists(branchName)
 		if err != nil {
 			continue
 		}
 		
 		if branchExists {
-			m.logger.Infof("Switching repo %s to main branch: %s", repo.Alias, branchName)
+			m.logger.Infof("Configured main branch '%s' not found in repo %s, switching to: %s", configuredMainBranch, repo.Alias, branchName)
 			if err := gitRepo.CheckoutBranch(branchName); err != nil {
 				return fmt.Errorf("failed to checkout main branch %s: %w", branchName, err)
 			}
@@ -303,55 +335,49 @@ func (m *Manager) switchRepoToMainBranch(gitRepo *git.GitRepo, repo *config.Repo
 		return fmt.Errorf("failed to get current branch for repo %s: %w", repo.Alias, err)
 	}
 	
-	m.logger.Infof("No standard main branch found in repo %s, staying on current branch: %s", repo.Alias, currentBranch)
+	m.logger.Infof("No main branch candidates found in repo %s (including configured '%s'), staying on current branch: %s", repo.Alias, configuredMainBranch, currentBranch)
 	return nil
 }
 
 func (m *Manager) switchToMainContext(currentContext string) error {
-	m.logger.Info("Switching to main context - cleaning up worktrees and switching to main branches")
+	m.logger.Info("Switching to main context - keeping worktrees and reverting dependencies to git")
 	
-	// Step 1: Clean up all existing worktrees if there's a current context
+	// Step 0: Check for uncommitted changes in master repo and handle stash with confirmation
 	if currentContext != "" && currentContext != "main" && currentContext != "master" {
-		if err := m.cleanupAllWorktrees(currentContext); err != nil {
-			m.logger.Warnf("Failed to cleanup worktrees: %v", err)
+		if err := m.handleMasterRepoStashForMainSwitch(currentContext); err != nil {
+			return err
 		}
 	}
 	
-	// Step 2: Switch all repositories to their main branches
-	allRepos := m.config.Repos
-	for _, repo := range allRepos {
-		gitRepo := git.NewGitRepo(repo.Path)
-		if err := m.switchRepoToMainBranch(gitRepo, &repo); err != nil {
-			return fmt.Errorf("failed to switch repo %s to main branch: %w", repo.Alias, err)
+	// Step 1: Switch master repository to main branch (keep worktrees intact)
+	masterRepo, err := m.config.GetMasterRepo()
+	if err != nil {
+		m.logger.Warnf("No master repository configured: %v", err)
+	} else {
+		gitRepo := git.NewGitRepo(masterRepo.Path)
+		if err := m.switchRepoToMainBranch(gitRepo, masterRepo); err != nil {
+			return fmt.Errorf("failed to switch master repo to main branch: %w", err)
 		}
 	}
 	
-	// Step 3: Update pubspec dependencies to use git URLs instead of local paths
-	var repoInfos []*worktree.WorktreeInfo
-	for _, repo := range allRepos {
-		repoInfo := &worktree.WorktreeInfo{
-			Repo:         &repo,
-			WorktreePath: repo.Path,
-			BranchName:   "main", // Use "main" as the logical context name
+	// Step 2: Revert master repository dependencies to git references only
+	if masterRepo != nil {
+		if err := m.revertMasterDependenciesToGit(masterRepo); err != nil {
+			m.logger.Warnf("Failed to revert master dependencies to git: %v", err)
 		}
-		repoInfos = append(repoInfos, repoInfo)
+		
+		// Run flutter pub get in master repository
+		if err := m.runFlutterPubGetForRepo(masterRepo); err != nil {
+			m.logger.Warnf("Failed to run flutter pub get in master repo: %v", err)
+		}
 	}
 	
-	if err := m.updateDependencies(repoInfos); err != nil {
-		m.logger.Warnf("Failed to update dependencies: %v", err)
-	}
-	
-	// Step 4: Run flutter pub get in all repositories
-	if err := m.runFlutterPubGetForMain(allRepos); err != nil {
-		m.logger.Warnf("Failed to run flutter pub get: %v", err)
-	}
-	
-	// Step 5: Update current context
+	// Step 3: Update current context
 	if err := m.SetCurrentContext("main"); err != nil {
 		return fmt.Errorf("failed to set current context: %w", err)
 	}
 	
-	m.logger.Info("Successfully switched to main context")
+	m.logger.Info("Successfully switched to main context (worktrees preserved)")
 	return nil
 }
 
@@ -468,7 +494,19 @@ func (m *Manager) updatePubspecFilesForBranchMode(repoInfos []*worktree.Worktree
 
 		// Update dependencies to point to other repos in the same context
 		for _, otherRepo := range repoInfos {
-			if otherRepo.Repo.Alias == repoInfo.Repo.Alias {
+			// Get the correct identifier for current repo
+			currentRepoIdentifier := repoInfo.Repo.Alias
+			if currentRepoIdentifier == "" {
+				currentRepoIdentifier = repoInfo.Repo.Name
+			}
+			
+			// Get the correct identifier for other repo
+			otherRepoIdentifier := otherRepo.Repo.Alias
+			if otherRepoIdentifier == "" {
+				otherRepoIdentifier = otherRepo.Repo.Name
+			}
+			
+			if otherRepoIdentifier == currentRepoIdentifier {
 				continue
 			}
 
@@ -479,12 +517,15 @@ func (m *Manager) updatePubspecFilesForBranchMode(repoInfos []*worktree.Worktree
 				continue
 			}
 
-			if err := pubspecFile.ConvertGitToPath(otherRepo.Repo.Alias, relativePath); err != nil {
+			// Use the package name (from pubspec.yaml) for dependency identification
+			dependencyName := otherRepo.Repo.Name
+			
+			if err := pubspecFile.CommentGitDependencyAndAddPath(dependencyName, relativePath); err != nil {
 				m.logger.Debugf("Dependency %s not found or not a git dependency in %s: %v", 
-					otherRepo.Repo.Alias, repoInfo.Repo.Alias, err)
+					dependencyName, currentRepoIdentifier, err)
 			} else {
-				m.logger.Infof("Updated %s dependency in %s to use local path", 
-					otherRepo.Repo.Alias, repoInfo.Repo.Alias)
+				m.logger.Infof("Commented git and added path dependency for %s in %s", 
+					dependencyName, currentRepoIdentifier)
 			}
 		}
 
@@ -544,8 +585,21 @@ func (m *Manager) updatePubspecFilesForWorktrees(worktrees []*worktree.WorktreeI
 		}
 
 		// Update dependencies to point to other worktrees/repos in the same context
+		// Only convert dependencies to repos that are also in this context
 		for _, otherWorktree := range worktrees {
-			if otherWorktree.Repo.Alias == worktreeInfo.Repo.Alias {
+			// Get the correct identifier for current repo
+			currentRepoIdentifier := worktreeInfo.Repo.Alias
+			if currentRepoIdentifier == "" {
+				currentRepoIdentifier = worktreeInfo.Repo.Name
+			}
+			
+			// Get the correct identifier for other repo
+			otherRepoIdentifier := otherWorktree.Repo.Alias
+			if otherRepoIdentifier == "" {
+				otherRepoIdentifier = otherWorktree.Repo.Name
+			}
+			
+			if otherRepoIdentifier == currentRepoIdentifier {
 				continue
 			}
 
@@ -553,14 +607,14 @@ func (m *Manager) updatePubspecFilesForWorktrees(worktrees []*worktree.WorktreeI
 			// - If target is master repo: always use its original path
 			// - If target is non-master repo: always use its worktree path for this context
 			var targetPath string
-			if otherWorktree.Repo.Alias == m.config.Master {
+			if otherRepoIdentifier == m.config.Master {
 				// Target is master repo - use original path
 				targetPath = otherWorktree.Repo.Path
-				m.logger.Debugf("Target %s is master repo, using original path: %s", otherWorktree.Repo.Alias, targetPath)
+				m.logger.Debugf("Target %s is master repo, using original path: %s", otherRepoIdentifier, targetPath)
 			} else {
 				// Target is non-master repo - use worktree path
 				targetPath = m.worktreeManager.GetWorktreePath(otherWorktree.Repo, contextName)
-				m.logger.Debugf("Target %s is non-master repo, using worktree path: %s", otherWorktree.Repo.Alias, targetPath)
+				m.logger.Debugf("Target %s is non-master repo, using worktree path: %s", otherRepoIdentifier, targetPath)
 			}
 
 			relativePath, err := filepath.Rel(worktreeInfo.WorktreePath, targetPath)
@@ -571,22 +625,25 @@ func (m *Manager) updatePubspecFilesForWorktrees(worktrees []*worktree.WorktreeI
 			}
 
 			m.logger.Debugf("Updating %s in %s: %s -> %s (relative: %s)", 
-				otherWorktree.Repo.Alias, worktreeInfo.Repo.Alias, 
+				otherRepoIdentifier, currentRepoIdentifier, 
 				worktreeInfo.WorktreePath, targetPath, relativePath)
 
-			// Try to convert git to path first, if that fails, try to update existing path
-			if err := pubspecFile.ConvertGitToPath(otherWorktree.Repo.Alias, relativePath); err != nil {
+			// Use the package name (from pubspec.yaml) for dependency identification
+			dependencyName := otherWorktree.Repo.Name
+			
+			// Try to comment git and add path first, if that fails, try to update existing path
+			if err := pubspecFile.CommentGitDependencyAndAddPath(dependencyName, relativePath); err != nil {
 				// If it's not a git dependency, try to update existing path dependency
-				if err2 := pubspecFile.UpdatePathDependency(otherWorktree.Repo.Alias, relativePath); err2 != nil {
+				if err2 := pubspecFile.UpdatePathDependency(dependencyName, relativePath); err2 != nil {
 					m.logger.Debugf("Dependency %s not found as git or path dependency in %s: git_error=%v, path_error=%v", 
-						otherWorktree.Repo.Alias, worktreeInfo.Repo.Alias, err, err2)
+						dependencyName, currentRepoIdentifier, err, err2)
 				} else {
 					m.logger.Infof("Updated %s path dependency in %s to: %s", 
-						otherWorktree.Repo.Alias, worktreeInfo.Repo.Alias, relativePath)
+						dependencyName, currentRepoIdentifier, relativePath)
 				}
 			} else {
-				m.logger.Infof("Converted %s dependency in %s from git to local path: %s", 
-					otherWorktree.Repo.Alias, worktreeInfo.Repo.Alias, relativePath)
+				m.logger.Infof("Commented git and added path dependency for %s in %s: %s", 
+					dependencyName, currentRepoIdentifier, relativePath)
 			}
 		}
 
@@ -620,17 +677,32 @@ func (m *Manager) updateDependencies(repoInfos []*worktree.WorktreeInfo) error {
 
 		// Convert path dependencies back to git dependencies for main/master branches
 		for _, otherRepo := range repoInfos {
-			if otherRepo.Repo.Alias == repoInfo.Repo.Alias {
+			// Get the correct identifier for current repo
+			currentRepoIdentifier := repoInfo.Repo.Alias
+			if currentRepoIdentifier == "" {
+				currentRepoIdentifier = repoInfo.Repo.Name
+			}
+			
+			// Get the correct identifier for other repo
+			otherRepoIdentifier := otherRepo.Repo.Alias
+			if otherRepoIdentifier == "" {
+				otherRepoIdentifier = otherRepo.Repo.Name
+			}
+			
+			if otherRepoIdentifier == currentRepoIdentifier {
 				continue
 			}
 
+			// Use the package name (from pubspec.yaml) for dependency identification
+			dependencyName := otherRepo.Repo.Name
+
 			// For main context, we want to use git dependencies
-			if err := pubspecFile.ConvertPathToGitFromBackup(otherRepo.Repo.Alias); err != nil {
+			if err := pubspecFile.ConvertPathToGitFromBackup(dependencyName); err != nil {
 				m.logger.Debugf("Dependency %s not found or could not convert back to git in %s: %v", 
-					otherRepo.Repo.Alias, repoInfo.Repo.Alias, err)
+					dependencyName, currentRepoIdentifier, err)
 			} else {
 				m.logger.Infof("Converted %s dependency in %s back to git reference", 
-					otherRepo.Repo.Alias, repoInfo.Repo.Alias)
+					dependencyName, currentRepoIdentifier)
 			}
 		}
 
@@ -789,5 +861,171 @@ func (m *Manager) deleteBranchIfExists(repo *config.Repository, branchName strin
 	}
 
 	m.logger.Infof("Deleted branch %s in %s", branchName, repo.Alias)
+	return nil
+}
+
+// handleMasterRepoStashForMainSwitch checks for uncommitted changes in master repo
+// and shows confirmation dialog for stashing when switching to main context
+func (m *Manager) handleMasterRepoStashForMainSwitch(currentContext string) error {
+	// Get master repository
+	masterRepo, err := m.config.GetMasterRepo()
+	if err != nil {
+		// No master repo configured, nothing to do
+		m.logger.Debug("No master repository configured, skipping stash check")
+		return nil
+	}
+	
+	gitRepo := git.NewGitRepo(masterRepo.Path)
+	if !gitRepo.IsGitRepo() {
+		return nil
+	}
+	
+	// Check for uncommitted changes
+	hasChanges, err := gitRepo.HasUncommittedChanges()
+	if err != nil {
+		m.logger.Warnf("Failed to check for uncommitted changes in master repo: %v", err)
+		return nil
+	}
+	
+	if !hasChanges {
+		// No changes to stash, proceed normally
+		return nil
+	}
+	
+	// Show confirmation dialog via TUI
+	repoIdentifier := masterRepo.Alias
+	if repoIdentifier == "" {
+		repoIdentifier = masterRepo.Name
+	}
+	
+	// Try TUI confirmation, if it fails (no TTY), auto-confirm
+	confirmed, err := tui.RunStashConfirmation(currentContext, repoIdentifier)
+	if err != nil {
+		if strings.Contains(err.Error(), "TTY") || strings.Contains(err.Error(), "tty") {
+			// No TTY available, auto-confirm stash
+			m.logger.Infof("No TTY available for stash confirmation, auto-stashing changes in %s", repoIdentifier)
+			confirmed = true
+		} else {
+			return fmt.Errorf("stash confirmation failed: %w", err)
+		}
+	}
+	
+	if !confirmed {
+		return fmt.Errorf("switch cancelled by user")
+	}
+	
+	// User confirmed, stash the changes
+	if err := gitRepo.StashForContext(currentContext); err != nil {
+		return fmt.Errorf("failed to stash changes in master repo: %w", err)
+	}
+	
+	m.logger.Infof("Stashed uncommitted changes in master repo %s for context %s", repoIdentifier, currentContext)
+	return nil
+}
+
+// handleMasterRepoStashRestore restores stash when switching back from main context
+func (m *Manager) handleMasterRepoStashRestore(targetContext string) error {
+	// Get master repository
+	masterRepo, err := m.config.GetMasterRepo()
+	if err != nil {
+		// No master repo configured, nothing to do
+		return nil
+	}
+	
+	gitRepo := git.NewGitRepo(masterRepo.Path)
+	if !gitRepo.IsGitRepo() {
+		return nil
+	}
+	
+	// Check if there's a stash for this context
+	hasStash, err := gitRepo.HasStashForContext(targetContext)
+	if err != nil {
+		m.logger.Warnf("Failed to check for stash in master repo: %v", err)
+		return nil
+	}
+	
+	if hasStash {
+		// Restore the stash
+		if err := gitRepo.PopStashForContext(targetContext); err != nil {
+			m.logger.Warnf("Failed to restore stash in master repo: %v", err)
+			return nil
+		}
+		
+		repoIdentifier := masterRepo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = masterRepo.Name
+		}
+		
+		m.logger.Infof("Restored stashed changes in master repo %s from context %s", repoIdentifier, targetContext)
+	}
+	
+	return nil
+}
+
+// revertMasterDependenciesToGit reverts all commented git dependencies back to git in master repository
+func (m *Manager) revertMasterDependenciesToGit(masterRepo *config.Repository) error {
+	pubspecPath := filepath.Join(masterRepo.Path, "pubspec.yaml")
+	if _, err := os.Stat(pubspecPath); os.IsNotExist(err) {
+		m.logger.Debugf("No pubspec.yaml found in master repo, skipping dependency revert")
+		return nil
+	}
+
+	pubspecFile, err := pubspec.LoadPubspec(masterRepo.Path)
+	if err != nil {
+		return fmt.Errorf("failed to load pubspec.yaml in master repo: %w", err)
+	}
+
+	// Get all repositories to find dependencies to revert
+	allRepos := m.config.Repos
+	for _, repo := range allRepos {
+		// Skip the master repository itself
+		if repo.Alias == masterRepo.Alias || repo.Name == masterRepo.Name {
+			continue
+		}
+
+		// Use package name for dependency identification
+		dependencyName := repo.Name
+		
+		// Try to uncomment git dependency and remove path dependency
+		if err := pubspecFile.UncommentGitDependencyAndRemovePath(dependencyName); err != nil {
+			m.logger.Debugf("Dependency %s not found or not in expected format in master repo: %v", dependencyName, err)
+		} else {
+			m.logger.Infof("Reverted %s dependency in master repo back to git reference", dependencyName)
+		}
+	}
+
+	if err := pubspecFile.Save(); err != nil {
+		return fmt.Errorf("failed to save pubspec.yaml in master repo: %w", err)
+	}
+
+	return nil
+}
+
+// runFlutterPubGetForRepo runs flutter pub get in a specific repository
+func (m *Manager) runFlutterPubGetForRepo(repo *config.Repository) error {
+	pubspecPath := filepath.Join(repo.Path, "pubspec.yaml")
+	if _, err := os.Stat(pubspecPath); os.IsNotExist(err) {
+		m.logger.Debugf("No pubspec.yaml in %s, skipping flutter pub get", repo.Alias)
+		return nil
+	}
+
+	repoIdentifier := repo.Alias
+	if repoIdentifier == "" {
+		repoIdentifier = repo.Name
+	}
+
+	m.logger.Infof("Running flutter pub get in %s (path: %s)", repoIdentifier, repo.Path)
+	cmd := exec.Command("flutter", "pub", "get")
+	cmd.Dir = repo.Path
+	
+	// Capture output for logging
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		m.logger.Warnf("flutter pub get failed in %s: %v\nOutput: %s", 
+			repoIdentifier, err, string(output))
+		return fmt.Errorf("flutter pub get failed in %s: %w", repoIdentifier, err)
+	}
+
+	m.logger.Infof("flutter pub get completed successfully in %s", repoIdentifier)
 	return nil
 }
