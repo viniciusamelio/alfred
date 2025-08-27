@@ -41,14 +41,16 @@ func (p *PubspecYaml) Save() error {
 
 func (p *PubspecYaml) ConvertGitToPath(depName, localPath string) error {
 	// Pattern to find git dependency block for the specified dependency
-	gitPattern := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n(\s+)git:\s*\n(\s+url:.*\n)(\s+ref:.*\n)?`)
+	// Updated to handle optional commented lines between dependency name and git block
+	gitPattern := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n((?:\s*#.*\n)*)(\s+)git:\s*\n(\s+url:.*\n)(\s+ref:.*\n)?`)
 
 	if !gitPattern.MatchString(p.content) {
 		return fmt.Errorf("dependency '%s' is not a git dependency", depName)
 	}
 
 	// Replace git dependency with path dependency
-	replacement := fmt.Sprintf("${1}%s:\n${2}path: %s\n", depName, localPath)
+	// Note: ${3} is now the indentation group due to the additional commented lines group
+	replacement := fmt.Sprintf("${1}%s:\n${3}path: %s\n", depName, localPath)
 	p.content = gitPattern.ReplaceAllString(p.content, replacement)
 
 	return nil
@@ -201,7 +203,8 @@ func ExtractPackageNameFromFile(pubspecPath string) (string, error) {
 // CommentGitDependencyAndAddPath comments out git dependency and adds path dependency
 func (p *PubspecYaml) CommentGitDependencyAndAddPath(depName, localPath string) error {
 	// Pattern to find git dependency block for the specified dependency
-	gitPattern := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n(\s+)git:\s*\n(\s+url:.*\n)(\s+ref:.*\n)?`)
+	// Updated to handle optional commented lines between dependency name and git block
+	gitPattern := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(depName) + `:\s*\n((?:\s*#.*\n)*)(\s+)git:\s*\n(\s+url:.*\n)(\s+ref:.*\n)?`)
 
 	if !gitPattern.MatchString(p.content) {
 		return fmt.Errorf("dependency '%s' is not a git dependency", depName)
@@ -216,11 +219,16 @@ func (p *PubspecYaml) CommentGitDependencyAndAddPath(depName, localPath string) 
 		result.WriteString(fmt.Sprintf("%s:\n", depName))
 		result.WriteString(fmt.Sprintf("    path: %s\n", localPath))
 
-		// Comment out the original git dependency
-		for _, line := range lines {
-			result.WriteString("  # ")
-			result.WriteString(line)
-			result.WriteString("\n")
+		// Comment out the original git dependency (skip the first line which is the dependency name)
+		for i, line := range lines {
+			if i == 0 {
+				continue // Skip the dependency name line as we already added it
+			}
+			if strings.TrimSpace(line) != "" {
+				result.WriteString("  # ")
+				result.WriteString(line)
+				result.WriteString("\n")
+			}
 		}
 
 		return result.String()
