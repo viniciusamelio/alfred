@@ -12,17 +12,17 @@ import (
 
 var (
 	spinnerStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("62"))
+			Foreground(lipgloss.Color("62"))
 
 	scanningTextStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("252")).
-		MarginLeft(1)
+				Bold(true).
+				Foreground(lipgloss.Color("252")).
+				MarginLeft(1)
 
 	foundTextStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		MarginLeft(1)
+			Bold(true).
+			Foreground(lipgloss.Color("86")).
+			MarginLeft(1)
 )
 
 type ScanningModel struct {
@@ -40,7 +40,7 @@ func NewScanningModel() *ScanningModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = spinnerStyle
-	
+
 	return &ScanningModel{
 		spinner:  s,
 		scanning: true,
@@ -86,16 +86,16 @@ func (m ScanningModel) View() string {
 	var b strings.Builder
 	b.WriteString(m.spinner.View())
 	b.WriteString(scanningTextStyle.Render("Scanning for Dart/Flutter packages..."))
-	
+
 	return b.String()
 }
 
 func ShowScanningSpinner(count int) error {
 	model := NewScanningModel()
 	model.found = count
-	
+
 	p := tea.NewProgram(model)
 	_, err := p.Run()
-	
+
 	return err
 }

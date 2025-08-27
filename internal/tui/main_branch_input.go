@@ -12,23 +12,23 @@ import (
 
 var (
 	mainBranchInputStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		Padding(1, 2).
-		Width(50)
-		
+				BorderStyle(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("62")).
+				Padding(1, 2).
+				Width(50)
+
 	mainBranchTitleStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
-		Bold(true).
-		Margin(1, 0)
-		
+				Foreground(lipgloss.Color("205")).
+				Bold(true).
+				Margin(1, 0)
+
 	mainBranchLabelStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
-		Margin(1, 0, 0, 0)
-		
+				Foreground(lipgloss.Color("241")).
+				Margin(1, 0, 0, 0)
+
 	mainBranchSuccessStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("46")).
-		Bold(true)
+				Foreground(lipgloss.Color("46")).
+				Bold(true)
 )
 
 type mainBranchInputModel struct {
@@ -94,8 +94,8 @@ func (m mainBranchInputModel) View() string {
 	title := mainBranchTitleStyle.Render("Set Main Branch")
 	label := mainBranchLabelStyle.Render("Enter the main branch name to be used when running 'alfred switch main':")
 	input := m.textInput.View()
-	
-	content := fmt.Sprintf("%s\n%s\n\n%s\n\n%s", 
+
+	content := fmt.Sprintf("%s\n%s\n\n%s\n\n%s",
 		title,
 		label,
 		input,
