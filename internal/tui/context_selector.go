@@ -60,7 +60,7 @@ func (d contextItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 	}
 
 	str := fmt.Sprintf("%s%s", prefix, i.name)
-	
+
 	if i.description != "" {
 		str += fmt.Sprintf(" - %s", i.description)
 	}
@@ -74,9 +74,9 @@ func (d contextItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 }
 
 type ContextSelectorModel struct {
-	list        list.Model
-	choice      string
-	quitting    bool
+	list           list.Model
+	choice         string
+	quitting       bool
 	currentContext string
 }
 
@@ -171,7 +171,7 @@ func RunContextSelector(contexts []string, currentContext string) (string, error
 
 	m := NewContextSelector(contexts, currentContext)
 	p := tea.NewProgram(m)
-	
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return "", fmt.Errorf("error running context selector: %w", err)
@@ -181,7 +181,7 @@ func RunContextSelector(contexts []string, currentContext string) (string, error
 	if model, ok := finalModel.(*ContextSelectorModel); ok {
 		return model.GetChoice(), nil
 	}
-	
+
 	if model, ok := finalModel.(ContextSelectorModel); ok {
 		return model.GetChoice(), nil
 	}

@@ -48,15 +48,15 @@ type repoItem struct {
 }
 
 type ContextCreatorModel struct {
-	repos       []repoItem
-	cursor      int
-	nameInput   textinput.Model
-	step        int // 0: name input, 1: repo selection
-	finished    bool
-	cancelled   bool
-	contextName string
+	repos         []repoItem
+	cursor        int
+	nameInput     textinput.Model
+	step          int // 0: name input, 1: repo selection
+	finished      bool
+	cancelled     bool
+	contextName   string
 	selectedRepos []string
-	error       string
+	error         string
 }
 
 func NewContextCreator(repoAliases []string, repoPaths []string) *ContextCreatorModel {
@@ -69,8 +69,8 @@ func NewContextCreator(repoAliases []string, repoPaths []string) *ContextCreator
 	repos := make([]repoItem, len(repoAliases))
 	for i, alias := range repoAliases {
 		repos[i] = repoItem{
-			alias: alias,
-			path:  repoPaths[i],
+			alias:   alias,
+			path:    repoPaths[i],
 			checked: false,
 		}
 	}
@@ -117,12 +117,12 @@ func (m ContextCreatorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedRepos = append(m.selectedRepos, repo.alias)
 					}
 				}
-				
+
 				if selectedCount == 0 {
 					m.error = "Please select at least one repository"
 					return m, nil
 				}
-				
+
 				m.finished = true
 				return m, tea.Quit
 			}
@@ -153,7 +153,6 @@ func (m ContextCreatorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 		}
-
 	}
 
 	if m.step == 0 {
@@ -169,7 +168,7 @@ func (m ContextCreatorModel) View() string {
 	}
 
 	if m.finished {
-		return fmt.Sprintf("✅ Context '%s' will be created with repositories: %s\n", 
+		return fmt.Sprintf("✅ Context '%s' will be created with repositories: %s\n",
 			m.contextName, strings.Join(m.selectedRepos, ", "))
 	}
 
@@ -183,12 +182,12 @@ func (m ContextCreatorModel) View() string {
 		b.WriteString("\n")
 		b.WriteString(m.nameInput.View())
 		b.WriteString("\n")
-		
+
 		if m.error != "" {
 			b.WriteString(creatorErrorStyle.Render(m.error))
 			b.WriteString("\n")
 		}
-		
+
 		b.WriteString(helpTextStyle.Render("Press Enter to continue, Esc to cancel"))
 	} else {
 		// Repository selection step
@@ -209,13 +208,13 @@ func (m ContextCreatorModel) View() string {
 			}
 
 			line := fmt.Sprintf("%s %s %s (%s)", cursor, checked, repo.alias, repo.path)
-			
+
 			if m.cursor == i {
 				line = selectedCheckboxStyle.Render(line)
 			} else {
 				line = style.Render(line)
 			}
-			
+
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
@@ -241,14 +240,14 @@ func (m ContextCreatorModel) GetResult() (string, []string, bool) {
 func RunRepoSelector(repoAliases []string, repoPaths []string) ([]string, error) {
 	m := NewContextCreator(repoAliases, repoPaths)
 	m.step = 1 // Skip context name input, go directly to repo selection
-	
+
 	p := tea.NewProgram(m)
-	
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, fmt.Errorf("error running repo selector: %w", err)
 	}
-	
+
 	// Try both pointer and value types
 	if model, ok := finalModel.(*ContextCreatorModel); ok {
 		_, repos, success := model.GetResult()
@@ -257,7 +256,7 @@ func RunRepoSelector(repoAliases []string, repoPaths []string) ([]string, error)
 		}
 		return repos, nil
 	}
-	
+
 	if model, ok := finalModel.(ContextCreatorModel); ok {
 		_, repos, success := model.GetResult()
 		if !success {
@@ -265,7 +264,7 @@ func RunRepoSelector(repoAliases []string, repoPaths []string) ([]string, error)
 		}
 		return repos, nil
 	}
-	
+
 	return nil, fmt.Errorf("unexpected model type: %T", finalModel)
 }
 
@@ -276,7 +275,7 @@ func RunContextCreator(repoAliases []string, repoPaths []string) (string, []stri
 
 	m := NewContextCreator(repoAliases, repoPaths)
 	p := tea.NewProgram(m)
-	
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return "", nil, fmt.Errorf("error running context creator: %w", err)
@@ -290,7 +289,7 @@ func RunContextCreator(repoAliases []string, repoPaths []string) (string, []stri
 		}
 		return name, repos, nil
 	}
-	
+
 	if model, ok := finalModel.(ContextCreatorModel); ok {
 		name, repos, success := model.GetResult()
 		if !success {

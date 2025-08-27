@@ -10,41 +10,41 @@ import (
 
 var (
 	scannerTitleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("62")).
-		MarginBottom(1).
-		Padding(0, 1)
+				Bold(true).
+				Foreground(lipgloss.Color("62")).
+				MarginBottom(1).
+				Padding(0, 1)
 
 	scannerSubtitleStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
-		MarginBottom(2)
+				Foreground(lipgloss.Color("241")).
+				MarginBottom(2)
 
 	packageItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
-		Foreground(lipgloss.Color("252"))
+				PaddingLeft(2).
+				Foreground(lipgloss.Color("252"))
 
 	selectedPackageStyle = lipgloss.NewStyle().
-		PaddingLeft(0).
-		Foreground(lipgloss.Color("170")).
-		Bold(true)
+				PaddingLeft(0).
+				Foreground(lipgloss.Color("170")).
+				Bold(true)
 
 	masterLabelStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("62")).
-		Foreground(lipgloss.Color("230")).
-		Padding(0, 1).
-		Bold(true)
+				Background(lipgloss.Color("62")).
+				Foreground(lipgloss.Color("230")).
+				Padding(0, 1).
+				Bold(true)
 
 	scannerHelpStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
-		MarginTop(2)
+				Foreground(lipgloss.Color("241")).
+				MarginTop(2)
 
 	scannerSuccessStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("86")).
-		Bold(true)
+				Foreground(lipgloss.Color("86")).
+				Bold(true)
 
-	packageCountStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
-		Bold(true)
+	// packageCountStyle = lipgloss.NewStyle().
+	// 			Foreground(lipgloss.Color("39")).
+	// 			Bold(true)
 )
 
 type PackageInfo struct {
@@ -53,13 +53,13 @@ type PackageInfo struct {
 }
 
 type ScannerModel struct {
-	packages     []PackageInfo
-	cursor       int
-	finished     bool
-	cancelled    bool
-	selectedIdx  int
-	title        string
-	subtitle     string
+	packages    []PackageInfo
+	cursor      int
+	finished    bool
+	cancelled   bool
+	selectedIdx int
+	title       string
+	subtitle    string
 }
 
 func NewScanner(packages []PackageInfo) *ScannerModel {
@@ -158,12 +158,12 @@ func (m ScannerModel) View() string {
 		}
 
 		line := fmt.Sprintf("%s %s %s", cursor, icon, pkg.Name)
-		
+
 		// Path info
 		pathInfo := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")).
 			Render(fmt.Sprintf("(%s)", pkg.Path))
-		
+
 		line += " " + pathInfo
 
 		if m.cursor == i {
@@ -206,17 +206,17 @@ func RunPackageSelector(packages []PackageInfo) (string, error) {
 		} else if strings.Contains(strings.ToLower(pkg.Name), "core") {
 			icon = "⚙️"
 		}
-		
-		fmt.Printf("%s %s %s\n", 
+
+		fmt.Printf("%s %s %s\n",
 			scannerTitleStyle.Render("🔍 Repository Scanner"),
 			scannerSubtitleStyle.Render("Found 1 Dart/Flutter package"),
 			"")
-		fmt.Printf("\n%s %s %s %s\n\n", 
+		fmt.Printf("\n%s %s %s %s\n\n",
 			masterLabelStyle.Render("MASTER"),
 			icon,
 			scannerSuccessStyle.Render(pkg.Name),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render(fmt.Sprintf("(%s)", pkg.Path)))
-		
+
 		return pkg.Name, nil
 	}
 
