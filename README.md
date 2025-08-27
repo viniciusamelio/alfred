@@ -1,259 +1,214 @@
 # Alfred CLI
 
-Alfred é uma ferramenta CLI para gerenciar projetos multi-repositório Flutter/Dart, permitindo trabalhar com múltiplos repositórios de forma coordenada através de contextos.
+[![CI/CD Pipeline](https://github.com/viniciusamelio/alfred/actions/workflows/ci.yml/badge.svg)](https://github.com/viniciusamelio/alfred/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/viniciusamelio/alfred)](https://goreportcard.com/report/github.com/viniciusamelio/alfred)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/release/viniciusamelio/alfred.svg)](https://github.com/viniciusamelio/alfred/releases/latest)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/viniciusamelio/alfred)](https://golang.org/)
 
-## Funcionalidades
+A powerful CLI tool for managing multi-repository Flutter/Dart projects with context-based workflows, enabling coordinated development across multiple repositories through intelligent context switching and dependency management.
 
-- **Gestão de Contextos**: Crie e alterne entre diferentes contextos de trabalho
-- **Worktrees/Branches**: Suporte para trabalhar com git worktrees ou branches
-- **Gestão de Dependências**: Atualização automática de dependências entre repositórios
-- **Interface de Commit Interativa**: Interface visual para commitar mudanças em múltiplos repositórios simultaneamente
-- **Preparação para Produção**: Reverter dependências locais para referências git
+## ✨ Features
 
-## Instalação
+- **🎯 Context Management**: Create and switch between different development contexts
+- **🌿 Git Worktrees & Branches**: Support for both git worktrees and branch-based workflows  
+- **📦 Dependency Management**: Automatic dependency synchronization between repositories
+- **💻 Interactive Commit Interface**: Visual interface for committing changes across multiple repositories
+- **🚀 Production Ready**: Automated preparation for deployment with git dependency reversion
+- **🔄 Automatic Upstream**: Intelligent upstream configuration for push/pull operations
+- **🔍 Diagnostics**: Built-in troubleshooting tools for repository status
 
+## 🚀 Installation
+
+### Secure Installation Script (Recommended)
+
+Run our secure installation script that works on **macOS** and **Linux** with **bash**, **zsh**, and **fish**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash
+```
+
+Or with wget:
+```bash
+wget -qO- https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash
+```
+
+**Security Features:**
+- ✅ Integrity verification with checksums
+- ✅ Never runs as root for security
+- ✅ Automatic OS and architecture detection
+- ✅ macOS Gatekeeper compatible
+- ✅ Shell completion setup (bash, zsh, fish)
+
+### Installation Options
+
+```bash
+# Install specific version
+curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash -s -- -v v1.2.3
+
+# Custom installation directory
+ALFRED_INSTALL_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash
+
+# Uninstall
+curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash -s -- --uninstall
+```
+
+### Alternative Installation Methods
+
+**Go Install:**
 ```bash
 go install github.com/viniciusamelio/alfred@latest
 ```
 
-Ou compile localmente:
+**Manual Download:**
+Download pre-built binaries from [releases page](https://github.com/viniciusamelio/alfred/releases/latest)
 
+**Build from Source:**
 ```bash
 git clone https://github.com/viniciusamelio/alfred
 cd alfred
-go build -o alfred .
+make build
 ```
 
-## Uso Básico
+## 🚀 Getting Started
 
-### Inicialização
+### 1. Initialize Alfred in your project directory
 
 ```bash
-# Inicializar alfred no diretório atual
+# Scan and auto-configure existing Dart/Flutter packages
+alfred scan
+
+# Or initialize with manual configuration
 alfred init
-
-# Ou escanear automaticamente por projetos Dart/Flutter
-alfred scan
 ```
 
-### Gestão de Contextos
+### 2. Create and switch to a development context
 
 ```bash
-# Listar contextos disponíveis
-alfred list
-
-# Criar um novo contexto
+# Create a new context
 alfred create
 
-# Alternar para um contexto
-alfred switch <nome-do-contexto>
-
-# Alternar para o contexto principal (main/master branches)
-alfred switch main
-
-# Ver status atual
-alfred status
+# Switch to a context
+alfred switch my-feature
 ```
 
-### Nova Funcionalidade: Interface de Commit Interativa
-
-A nova funcionalidade de commit permite visualizar e commitar mudanças em todos os repositórios do contexto ativo através de uma interface interativa similar ao VS Code.
+### 3. Work with your repositories
 
 ```bash
-# Abrir interface de commit interativa
+# Interactive commit across all repositories
 alfred commit
-```
 
-#### Funcionalidades da Interface de Commit:
-
-**Visualização de Arquivos:**
-- 📁 Arquivos agrupados por repositório
-- 🎨 Cores diferentes para cada tipo de mudança:
-  - 🟠 **Modified** (M) - Arquivos modificados
-  - 🟢 **Added** (A) - Arquivos adicionados
-  - 🔴 **Deleted** (D) - Arquivos deletados
-  - 🔵 **Renamed** (R) - Arquivos renomeados
-  - ⚪ **Untracked** (??) - Arquivos não rastreados
-
-**Controles de Navegação:**
-- `↑/↓` ou `j/k` - Navegar entre arquivos
-- `Space` - Selecionar/deselecionar arquivo individual
-- `A` - Selecionar todos os arquivos
-- `N` - Deselecionar todos os arquivos
-- `D` - Alternar painel de diff (mostrar/ocultar)
-- `Enter` ou `C` - Prosseguir para mensagem de commit
-- `Q` - Sair
-
-**Visualização de Diff em Tempo Real:**
-- **Painel lateral automático**: As mudanças do arquivo selecionado são exibidas automaticamente ao lado da lista
-- **Layout responsivo**: Interface se adapta ao tamanho do terminal
-- **Cores diferenciadas**: Linhas adicionadas em verde, removidas em vermelho, contexto em azul
-- **Informações do arquivo**: Status (Modified, Added, etc.) e se está staged ou unstaged
-
-**Mensagem de Commit:**
-- Editor de texto multi-linha
-- `Ctrl+S` ou `Ctrl+Enter` - Confirmar commit
-- `Esc` - Voltar à seleção de arquivos
-- `Ctrl+C` - Cancelar
-
-**Commit Simultâneo:**
-- Uma única mensagem de commit é aplicada a todos os repositórios selecionados
-- Cada repositório recebe apenas os arquivos que você selecionou dele
-- Feedback detalhado sobre sucessos e erros por repositório
-
-### Exemplo de Fluxo de Trabalho
-
-```bash
-# 1. Inicializar alfred
-alfred scan
-
-# 2. Criar um contexto para uma nova feature
-alfred create
-# Selecione os repositórios necessários e nomeie o contexto
-
-# 3. Alternar para o contexto
-alfred switch minha-feature
-
-# 4. Trabalhar nos arquivos...
-# (fazer mudanças nos repositórios)
-
-# 5. Usar a interface de commit interativa
-alfred commit
-# - Visualizar todas as mudanças
-# - Selecionar arquivos específicos
-# - Ver diffs se necessário
-# - Escrever mensagem de commit
-# - Commitar em todos os repos simultaneamente
-
-# 6. Push das mudanças (upstream configurado automaticamente)
+# Push with automatic upstream configuration
 alfred push
 
-# 7. Pull de atualizações (upstream configurado automaticamente)
+# Pull with automatic upstream setup
 alfred pull
 
-# 8. Voltar ao contexto principal quando terminar
-alfred switch main
+# Diagnose repository issues
+alfred diagnose
 ```
 
-### Fluxo Simplificado com Upstream Automático
+## 📖 Usage
 
-Com as novas funcionalidades, o fluxo de trabalho fica ainda mais simples:
+### Context Management
+```bash
+alfred list                    # List available contexts
+alfred create                  # Create a new context
+alfred switch <context-name>   # Switch to a context
+alfred switch main             # Switch to main/master branches
+alfred status                  # Show current status
+```
+
+### Repository Operations
+```bash
+alfred commit                  # Interactive commit interface
+alfred push                    # Push with automatic upstream
+alfred pull                    # Pull with automatic upstream
+alfred diagnose                # Troubleshoot repository issues
+```
+
+### Advanced Features
+```bash
+alfred prepare                 # Prepare for production deployment
+alfred main-branch <branch>    # Set main branch name
+```
+
+## 🛠️ Development
+
+### Prerequisites
+- Go 1.21+
+- Make
+- Git
+
+### Setup Development Environment
 
 ```bash
-# Criar nova feature branch em todos os repos do contexto
-alfred switch nova-feature
+# Clone the repository
+git clone https://github.com/viniciusamelio/alfred
+cd alfred
 
-# Trabalhar nos arquivos...
-# (fazer mudanças)
+# Install dependencies
+make deps
 
-# Commit interativo
-alfred commit
+# Run tests
+make test
 
-# Push automático - sem se preocupar com upstream!
-alfred push
-# ✅ Alfred configura automaticamente origin/nova-feature para todos os repos
+# Build locally
+make build
 
-# Colaborar com outros devs
-alfred pull
-# ✅ Alfred puxa as mudanças automaticamente, configurando upstream se necessário
-
-# Continuar trabalhando...
-alfred commit
-alfred push  # Agora já tem upstream configurado
+# Development with hot reload
+make dev
 ```
 
-## Configuração
-
-O alfred usa um arquivo `.alfred/alfred.yaml` para configuração:
-
-```yaml
-repos:
-  - name: core
-    path: ./core
-  - name: ui  
-    path: ./ui
-  - name: app
-    path: ./app
-
-master: app
-mode: worktree
-main_branch: main
-
-contexts:
-  feature-1:
-    - ui
-    - app
-  feature-2:
-    - ui
-    - app
-    - core
-```
-
-## Modos de Operação
-
-### Worktree Mode (Recomendado)
-- Cria git worktrees separados para cada contexto
-- Repositórios não-master ficam isolados por contexto
-- Repositório master permanece no diretório original
-
-### Branch Mode
-- Alterna branches diretamente nos repositórios
-- Todos os repositórios ficam nos diretórios originais
-- Usa git stash para preservar mudanças
-
-### Gestão de Repositórios
+### Available Make Commands
 
 ```bash
-# Push com configuração automática de upstream
-alfred push
-
-# Push forçando reconfiguração de upstream
-alfred push -u
-
-# Pull com configuração automática de upstream
-alfred pull
-
-# Pull usando rebase (padrão)
-alfred pull -r
+make build          # Build the binary
+make build-all      # Build for all platforms
+make test           # Run tests
+make coverage       # Tests with coverage
+make lint           # Lint code
+make fmt            # Format code
+make security       # Security checks
+make install        # Install to system
+make uninstall      # Uninstall from system
+make release        # Create release archives
+make clean          # Clean artifacts
+make help           # Show all commands
 ```
 
-#### Nova Funcionalidade: Configuração Automática de Upstream
+## 🤝 Contributing
 
-Os comandos `push` e `pull` agora configuram automaticamente o upstream das branches quando necessário:
+Contributions are welcome! Please follow these steps:
 
-**Push Automático:**
-- Detecta se a branch atual tem upstream configurado
-- Se não tiver, configura automaticamente para `origin/<branch-atual>`
-- Faz o push normalmente
-- Flag `-u` força reconfiguração mesmo se já existir upstream
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -am 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-**Pull Automático:**
-- Verifica se existe upstream configurado
-- Se não existir, tenta configurar para `origin/<branch-atual>`
-- Executa o pull (com rebase por padrão)
-- Elimina erros de "no tracking information"
+### Contributing Guidelines
 
-## Comandos Disponíveis
+- Write tests for new features
+- Keep code formatted (`make fmt`)
+- Run linting (`make lint`)
+- Update documentation when necessary
+- Follow the project's commit conventions
+- Ensure CI/CD pipeline passes
 
-| Comando | Descrição |
-|---------|-----------|
-| `alfred init` | Inicializar alfred no diretório atual |
-| `alfred scan` | Escanear e configurar automaticamente |
-| `alfred list` | Listar contextos disponíveis |
-| `alfred switch <contexto>` | Alternar para um contexto |
-| `alfred create` | Criar novo contexto |
-| `alfred delete <contexto>` | Deletar contexto |
-| `alfred status` | Ver status atual |
-| `alfred commit` | Interface interativa de commit |
-| `alfred push` | **Melhorado!** Push com upstream automático |
-| `alfred pull` | **Melhorado!** Pull com upstream automático |
-| `alfred prepare` | Preparar para produção |
-| `alfred main-branch <branch>` | Definir branch principal |
+### Code of Conduct
 
-## Contribuição
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Help others learn and grow
+- Follow the project's coding standards
 
-Contribuições são bem-vindas! Por favor, abra uma issue ou pull request.
+## 📄 License
 
-## Licença
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-MIT License
+---
+
+<p align="center">
+  <strong>Made with ❤️ for the Flutter/Dart community</strong>
+</p>

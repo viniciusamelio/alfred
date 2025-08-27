@@ -1265,10 +1265,27 @@ func (c *DiagnoseCmd) Run(ctx *kong.Context) error {
 	return nil
 }
 
+// Version information
+var (
+	version   = "dev"
+	buildTime = "unknown"
+	commit    = "unknown"
+)
+
+// SetVersionInfo sets the version information
+func SetVersionInfo(v, bt, c string) {
+	version = v
+	buildTime = bt
+	commit = c
+}
+
 type VersionCmd struct{}
 
 func (c *VersionCmd) Run(ctx *kong.Context) error {
-	fmt.Println("alfred v1.0.0")
+	fmt.Printf("Alfred CLI %s\n", version)
+	fmt.Printf("Build Time: %s\n", buildTime)
+	fmt.Printf("Commit: %s\n", commit)
+	fmt.Printf("Go Version: %s\n", "go1.21+")
 	return nil
 }
 
