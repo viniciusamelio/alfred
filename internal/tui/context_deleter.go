@@ -183,7 +183,7 @@ func (m ContextDeleterModel) View() string {
 	}
 
 	if m.finished {
-		return fmt.Sprintf("✅ Contexts %s will be deleted\n", 
+		return fmt.Sprintf("✅ Contexts %s will be deleted\n",
 			strings.Join(m.selectedNames, ", "))
 	}
 

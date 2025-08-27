@@ -17,6 +17,11 @@ import (
 	"github.com/viniciusamelio/alfred/internal/worktree"
 )
 
+const (
+	defaultMainBranch = "main"
+	canceledMessage   = "canceled"
+)
+
 var CLI struct {
 	Debug      bool          `help:"Enable debug mode" default:"false"`
 	Context    ContextCmd    `cmd:"" help:"Manage project contexts"`
@@ -53,10 +58,10 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 		fmt.Print("Do you want to overwrite the existing configuration? (y/N): ")
 
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			fmt.Println("Operation cancelled.")
+			fmt.Println("Operation " + canceledMessage + ".")
 			return nil
 		}
 		fmt.Println()
@@ -168,10 +173,10 @@ func promptForMainBranch() (string, error) {
 	fmt.Print("Enter main branch name (default: main): ")
 
 	var branchName string
-	fmt.Scanln(&branchName)
+	_, _ = fmt.Scanln(&branchName)
 
 	if branchName == "" {
-		branchName = "main"
+		branchName = defaultMainBranch
 	}
 
 	return branchName, nil
@@ -279,7 +284,7 @@ func (c *InitCmd) Run(ctx *kong.Context) error {
 	fmt.Print("Enter your choice (1 or 2): ")
 
 	var choice string
-	fmt.Scanln(&choice)
+	_, _ = fmt.Scanln(&choice)
 
 	if choice == "1" {
 		// Use scan functionality
@@ -439,15 +444,16 @@ func (c *ListCmd) Run(ctx *kong.Context) error {
 	currentContext, _ := manager.GetCurrentContext()
 
 	for _, contextName := range contexts {
-		if contextName == "main" {
+		switch contextName {
+		case "main":
 			if contextName == currentContext {
 				fmt.Printf("● %s (current) - main/master branches for all repos\n", contextName)
 			} else {
 				fmt.Printf("  %s - main/master branches for all repos\n", contextName)
 			}
-		} else if contextName == currentContext {
+		case currentContext:
 			fmt.Printf("● %s (current)\n", contextName)
-		} else {
+		default:
 			fmt.Printf("  %s\n", contextName)
 		}
 	}

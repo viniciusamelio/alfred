@@ -15,8 +15,8 @@ var (
 				BorderForeground(lipgloss.Color("62"))
 
 	stashWarningStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("208")).
-			Bold(true)
+				Foreground(lipgloss.Color("208")).
+				Bold(true)
 
 	promptStyle = lipgloss.NewStyle().
 			Margin(1, 0)
@@ -91,15 +91,15 @@ func (m StashConfirmationModel) View() string {
 	}
 
 	var content string
-	
+
 	content += stashWarningStyle.Render("⚠️  Uncommitted changes detected!") + "\n\n"
-	
+
 	content += fmt.Sprintf("Repository: %s\n", m.repoName)
 	content += fmt.Sprintf("Switching from context '%s' to 'main'\n\n", m.contextName)
-	
+
 	content += "Your uncommitted changes will be stashed and can be restored\n"
 	content += "when you return to this context.\n\n"
-	
+
 	content += promptStyle.Render("Do you want to proceed?")
 
 	// Options
@@ -131,7 +131,7 @@ func (m StashConfirmationModel) IsCancelled() bool {
 func RunStashConfirmation(contextName, repoName string) (bool, error) {
 	m := NewStashConfirmation(contextName, repoName)
 	p := tea.NewProgram(m)
-	
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return false, fmt.Errorf("error running stash confirmation: %w", err)
@@ -144,7 +144,7 @@ func RunStashConfirmation(contextName, repoName string) (bool, error) {
 		}
 		return model.IsConfirmed(), nil
 	}
-	
+
 	if model, ok := finalModel.(StashConfirmationModel); ok {
 		if model.IsCancelled() {
 			return false, fmt.Errorf("operation cancelled by user")

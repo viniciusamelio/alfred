@@ -75,7 +75,6 @@ type CommitModel struct {
 	cancelled      bool
 	error          string
 	success        string
-	commitMessage  string
 	selectedFiles  map[string][]string // repo alias -> selected file paths
 	showDiffPanel  bool                // whether to show diff panel alongside file list
 	diffPanelWidth int                 // width of the diff panel
@@ -633,6 +632,7 @@ func (m CommitModel) buildFileList(maxWidth int) string {
 		// Add minimal spacing after each repo group (except the last one)
 		if itemIndex < len(m.items) && m.items[itemIndex].FileChange.RepoAlias != item.FileChange.RepoAlias {
 			// Removed extra newline to reduce spacing between groups
+			b.WriteString("\n")
 		}
 	}
 

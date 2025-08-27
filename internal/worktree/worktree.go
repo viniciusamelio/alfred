@@ -34,13 +34,13 @@ func (w *Manager) GetWorktreePath(repo *config.Repository, contextName string) s
 
 func (w *Manager) CreateWorktreeForContext(repo *config.Repository, contextName string) (*WorktreeInfo, error) {
 	gitRepo := git.NewGitRepo(repo.Path)
-	
+
 	if !gitRepo.IsGitRepo() {
 		return nil, fmt.Errorf("repository %s is not a git repository", repo.Alias)
 	}
 
 	worktreePath := w.GetWorktreePath(repo, contextName)
-	
+
 	// Check if worktree already exists
 	worktreeExists, err := gitRepo.WorktreeExists(worktreePath)
 	if err != nil {
@@ -66,7 +66,7 @@ func (w *Manager) CreateWorktreeForContext(repo *config.Repository, contextName 
 func (w *Manager) RemoveWorktreeForContext(repo *config.Repository, contextName string) error {
 	gitRepo := git.NewGitRepo(repo.Path)
 	worktreePath := w.GetWorktreePath(repo, contextName)
-	
+
 	worktreeExists, err := gitRepo.WorktreeExists(worktreePath)
 	if err != nil {
 		return fmt.Errorf("failed to check worktree existence: %w", err)
@@ -84,10 +84,10 @@ func (w *Manager) RemoveWorktreeForContext(repo *config.Repository, contextName 
 
 func (w *Manager) ListWorktreesForContext(repos []*config.Repository, contextName string) ([]*WorktreeInfo, error) {
 	var worktrees []*WorktreeInfo
-	
+
 	for _, repo := range repos {
 		worktreePath := w.GetWorktreePath(repo, contextName)
-		
+
 		// Check if worktree exists
 		if _, err := os.Stat(worktreePath); err == nil {
 			worktrees = append(worktrees, &WorktreeInfo{
@@ -97,7 +97,7 @@ func (w *Manager) ListWorktreesForContext(repos []*config.Repository, contextNam
 			})
 		}
 	}
-	
+
 	return worktrees, nil
 }
 
@@ -150,7 +150,7 @@ func (w *Manager) ValidateWorktreeState(worktree *WorktreeInfo) error {
 	}
 
 	if currentBranch != worktree.BranchName {
-		return fmt.Errorf("worktree %s is on branch %s, expected %s", 
+		return fmt.Errorf("worktree %s is on branch %s, expected %s",
 			worktree.WorktreePath, currentBranch, worktree.BranchName)
 	}
 
@@ -163,7 +163,7 @@ func (w *Manager) GetWorktreeStatus(worktree *WorktreeInfo) (string, error) {
 	}
 
 	worktreeGitRepo := git.NewGitRepo(worktree.WorktreePath)
-	
+
 	hasChanges, err := worktreeGitRepo.HasUncommittedChanges()
 	if err != nil {
 		return fmt.Sprintf("%s (error checking changes)", worktree.BranchName), nil

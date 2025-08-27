@@ -106,7 +106,7 @@ func (m StatusModel) View() string {
 		} else {
 			b.WriteString(branchStyle.Render(status))
 		}
-		
+
 		b.WriteString("\n")
 	}
 
@@ -115,11 +115,11 @@ func (m StatusModel) View() string {
 
 func RunStatusView(currentContext string, repoStatus map[string]string) error {
 	m := NewStatusModel(currentContext, repoStatus)
-	
+
 	opts := []tea.ProgramOption{}
-	
+
 	p := tea.NewProgram(m, opts...)
-	
+
 	_, err := p.Run()
 	return err
 }
