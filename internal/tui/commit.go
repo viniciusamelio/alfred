@@ -21,8 +21,8 @@ var (
 	repoHeaderStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("39")).
-			MarginTop(1).
-			MarginBottom(1)
+			MarginTop(0).
+			MarginBottom(0)
 
 	fileItemStyle = lipgloss.NewStyle().
 			PaddingLeft(2).
@@ -37,21 +37,11 @@ var (
 			PaddingLeft(2).
 			Foreground(lipgloss.Color("46"))
 
-	unstagedFileStyle = lipgloss.NewStyle().
-				PaddingLeft(2).
-				Foreground(lipgloss.Color("214"))
-
 	commitMessageStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("62")).
 				Padding(1).
 				MarginTop(1)
-
-	diffViewStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1).
-			MarginTop(1)
 
 	helpCommitStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")).
@@ -170,15 +160,16 @@ func (m CommitModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update component sizes based on layout
 		if m.showDiffPanel && m.mode == 0 {
 			// In file selection mode with diff panel
-			diffWidth := (m.width*m.diffPanelWidth)/100 - 4
+			totalWidth := max(80, m.width) // Ensure minimum width
+			diffWidth := (totalWidth*m.diffPanelWidth)/100 - 4
 
-			m.diffViewport.Width = max(30, diffWidth)
+			m.diffViewport.Width = max(25, diffWidth)
 			m.diffViewport.Height = max(10, m.height-8)
 		} else {
 			// Normal layout
-			m.messageInput.SetWidth(min(60, m.width-4))
-			m.diffViewport.Width = min(80, m.width-4)
-			m.diffViewport.Height = min(20, m.height-10)
+			m.messageInput.SetWidth(max(40, min(80, m.width-4)))
+			m.diffViewport.Width = max(60, min(120, m.width-4))
+			m.diffViewport.Height = max(15, min(30, m.height-10))
 		}
 
 		return m, nil
@@ -218,20 +209,24 @@ func (m CommitModel) updateFileSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "up", "k":
-		if m.cursor > 0 {
+		if len(m.items) > 0 && m.cursor > 0 {
 			m.cursor--
-			// Auto-load diff for new selection
+			m.normalizeCursor()
+			// Auto-load diff for new selection and reset viewport position
 			if m.showDiffPanel {
 				m.loadCurrentDiff()
+				m.diffViewport.GotoTop() // Reset scroll position
 			}
 		}
 
 	case "down", "j":
-		if m.cursor < len(m.items)-1 {
+		if len(m.items) > 0 && m.cursor < len(m.items)-1 {
 			m.cursor++
-			// Auto-load diff for new selection
+			m.normalizeCursor()
+			// Auto-load diff for new selection and reset viewport position
 			if m.showDiffPanel {
 				m.loadCurrentDiff()
+				m.diffViewport.GotoTop() // Reset scroll position
 			}
 		}
 
@@ -327,19 +322,19 @@ func (m CommitModel) updateDiffNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "up", "k":
 		// Scroll up in diff
-		m.diffViewport.LineUp(1)
+		m.diffViewport.ScrollUp(1)
 
 	case "down", "j":
 		// Scroll down in diff
-		m.diffViewport.LineDown(1)
+		m.diffViewport.ScrollDown(1)
 
 	case "pgup", "b":
 		// Page up in diff
-		m.diffViewport.ViewUp()
+		m.diffViewport.PageUp()
 
 	case "pgdown", "f":
 		// Page down in diff
-		m.diffViewport.ViewDown()
+		m.diffViewport.PageDown()
 
 	case "home", "g":
 		// Go to top of diff
@@ -351,15 +346,17 @@ func (m CommitModel) updateDiffNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "left", "h":
 		// Navigate to previous file
-		if m.cursor > 0 {
+		if len(m.items) > 0 && m.cursor > 0 {
 			m.cursor--
+			m.normalizeCursor()
 			m.loadCurrentDiff()
 		}
 
 	case "right", "l":
 		// Navigate to next file
-		if m.cursor < len(m.items)-1 {
+		if len(m.items) > 0 && m.cursor < len(m.items)-1 {
 			m.cursor++
+			m.normalizeCursor()
 			m.loadCurrentDiff()
 		}
 	}
@@ -464,19 +461,27 @@ func (m CommitModel) View() string {
 }
 
 func (m CommitModel) viewFileSelection() string {
+	// Ensure cursor is normalized before rendering
+	m.normalizeCursor()
+
 	if !m.showDiffPanel {
 		return m.viewFileSelectionOnly()
 	}
 
-	// Calculate layout dimensions
-	fileListWidth := (m.width * (100 - m.diffPanelWidth)) / 100
-	diffWidth := (m.width * m.diffPanelWidth) / 100
+	// Calculate layout dimensions with better spacing
+	totalWidth := max(80, m.width) // Ensure minimum width
+	fileListWidth := (totalWidth * (100 - m.diffPanelWidth)) / 100
+	diffWidth := (totalWidth * m.diffPanelWidth) / 100
+
+	// Ensure minimum widths
+	fileListWidth = max(30, fileListWidth)
+	diffWidth = max(30, diffWidth)
 
 	// Build file list
-	fileListContent := m.buildFileList(fileListWidth - 4)
+	fileListContent := m.buildFileList(fileListWidth - 2)
 
 	// Build diff panel
-	diffContent := m.buildDiffPanel(diffWidth - 4)
+	diffContent := m.buildDiffPanel(diffWidth - 2)
 
 	// Combine side by side
 	fileLines := strings.Split(fileListContent, "\n")
@@ -485,7 +490,7 @@ func (m CommitModel) viewFileSelection() string {
 	maxLines := max(len(fileLines), len(diffLines))
 
 	var result strings.Builder
-	for i := 0; i < maxLines; i++ {
+	for i := range maxLines {
 		var fileLine, diffLine string
 
 		if i < len(fileLines) {
@@ -495,12 +500,21 @@ func (m CommitModel) viewFileSelection() string {
 			diffLine = diffLines[i]
 		}
 
-		// Pad file line to exact width
-		targetWidth := max(0, fileListWidth-4)
-		if len(fileLine) < targetWidth {
-			fileLine += strings.Repeat(" ", targetWidth-len(fileLine))
-		} else if targetWidth > 0 && len(fileLine) > targetWidth {
-			fileLine = fileLine[:targetWidth]
+		// Calculate actual display width (accounting for ANSI codes)
+		fileDisplayWidth := lipgloss.Width(fileLine)
+		targetWidth := fileListWidth - 2
+
+		// Pad or truncate file line to exact width
+		if fileDisplayWidth < targetWidth {
+			// Add padding to reach target width
+			padding := targetWidth - fileDisplayWidth
+			fileLine += strings.Repeat(" ", padding)
+		} else if fileDisplayWidth > targetWidth {
+			// Truncate if too long, but preserve styling
+			// This is a simple truncation - for better results we'd need to handle ANSI codes
+			if len(fileLine) > targetWidth {
+				fileLine = fileLine[:max(0, targetWidth-3)] + "..."
+			}
 		}
 
 		result.WriteString(fileLine)
@@ -555,49 +569,71 @@ func (m CommitModel) buildFileList(maxWidth int) string {
 	}
 
 	// Display files grouped by repository
+	// We need to maintain the original order to match cursor position
 	itemIndex := 0
-	for repoAlias, items := range repoGroups {
-		header := fmt.Sprintf("📁 %s", repoAlias)
-		if maxWidth > 0 && len(header) > maxWidth {
-			header = header[:maxWidth]
+	for _, item := range m.items {
+		// Check if this is the first item of a new repo group
+		if itemIndex == 0 || m.items[itemIndex-1].FileChange.RepoAlias != item.FileChange.RepoAlias {
+			header := fmt.Sprintf("📁 %s", item.FileChange.RepoAlias)
+			if maxWidth > 0 && len(header) > maxWidth {
+				header = header[:maxWidth]
+			}
+			b.WriteString(repoHeaderStyle.Render(header))
+			b.WriteString("\n")
 		}
-		b.WriteString(repoHeaderStyle.Render(header))
-		b.WriteString("\n")
 
-		for _, item := range items {
-			cursor := "  "
-			if itemIndex == m.cursor {
-				cursor = ">"
-			}
+		cursor := "  "
+		if itemIndex == m.cursor {
+			cursor = ">"
+		}
 
-			checkbox := "☐"
-			style := fileItemStyle
-			if item.Selected {
-				checkbox = "☑"
-				style = stagedFileStyle
-			}
+		checkbox := "☐"
+		style := fileItemStyle
+		if item.Selected {
+			checkbox = "☑"
+			style = stagedFileStyle
+		}
 
-			statusDesc := git.GetStatusDescription(item.FileChange.Status)
+		statusDesc := git.GetStatusDescription(item.FileChange.Status)
 
-			line := fmt.Sprintf("%s %s [%s] %s",
-				cursor, checkbox, statusDesc, item.FileChange.Path)
+		line := fmt.Sprintf("%s %s [%s] %s",
+			cursor, checkbox, statusDesc, item.FileChange.Path)
 
-			// Truncate line if too long
-			if maxWidth > 3 && len(line) > maxWidth {
+		// Truncate line if too long, but be smarter about it
+		if maxWidth > 10 && len(line) > maxWidth {
+			// Try to preserve the important parts: cursor, checkbox, status, and part of path
+			prefixLen := len(fmt.Sprintf("%s %s [%s] ", cursor, checkbox, statusDesc))
+			if prefixLen < maxWidth-3 {
+				availableForPath := maxWidth - prefixLen - 3
+				if availableForPath > 0 {
+					truncatedPath := item.FileChange.Path
+					if len(truncatedPath) > availableForPath {
+						truncatedPath = "..." + truncatedPath[len(truncatedPath)-(availableForPath-3):]
+					}
+					line = fmt.Sprintf("%s %s [%s] %s",
+						cursor, checkbox, statusDesc, truncatedPath)
+				} else {
+					line = line[:maxWidth-3] + "..."
+				}
+			} else {
 				line = line[:maxWidth-3] + "..."
 			}
-
-			if itemIndex == m.cursor {
-				line = selectedFileStyle.Render(line)
-			} else {
-				line = style.Render(line)
-			}
-
-			b.WriteString(line)
-			b.WriteString("\n")
-			itemIndex++
 		}
+
+		if itemIndex == m.cursor {
+			line = selectedFileStyle.Render(line)
+		} else {
+			line = style.Render(line)
+		}
+
+		b.WriteString(line)
 		b.WriteString("\n")
+		itemIndex++
+
+		// Add minimal spacing after each repo group (except the last one)
+		if itemIndex < len(m.items) && m.items[itemIndex].FileChange.RepoAlias != item.FileChange.RepoAlias {
+			// Removed extra newline to reduce spacing between groups
+		}
 	}
 
 	if !m.showDiffPanel {
@@ -615,12 +651,22 @@ func (m CommitModel) buildFileList(maxWidth int) string {
 func (m CommitModel) buildDiffPanel(maxWidth int) string {
 	var b strings.Builder
 
+	// Ensure minimum width for diff panel
+	effectiveWidth := max(25, maxWidth)
+
 	// Header for diff panel
-	if m.cursor < len(m.items) {
+	if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
 		item := m.items[m.cursor]
 		header := fmt.Sprintf("📄 %s/%s", item.FileChange.RepoAlias, item.FileChange.Path)
-		if maxWidth > 3 && len(header) > maxWidth {
-			header = header[:maxWidth-3] + "..."
+		if len(header) > effectiveWidth-3 {
+			// Smart truncation: keep the filename visible
+			parts := strings.Split(item.FileChange.Path, "/")
+			filename := parts[len(parts)-1]
+			if len(filename)+10 < effectiveWidth { // 10 for "📄 .../"
+				header = fmt.Sprintf("📄 .../%s", filename)
+			} else {
+				header = header[:effectiveWidth-3] + "..."
+			}
 		}
 		b.WriteString(repoHeaderStyle.Render(header))
 		b.WriteString("\n")
@@ -645,7 +691,7 @@ func (m CommitModel) buildDiffPanel(maxWidth int) string {
 	if m.currentDiff != "" {
 		// Create a viewport-like display for the diff
 		diffLines := strings.Split(m.currentDiff, "\n")
-		maxLines := m.height - 8 // Reserve space for headers and help
+		maxLines := max(10, m.height-8) // Reserve space for headers and help
 
 		for i, line := range diffLines {
 			if i >= maxLines {
@@ -653,9 +699,13 @@ func (m CommitModel) buildDiffPanel(maxWidth int) string {
 				break
 			}
 
-			// Truncate long lines
-			if maxWidth > 3 && len(line) > maxWidth {
-				line = line[:maxWidth-3] + "..."
+			// Smart truncation for diff lines
+			if len(line) > effectiveWidth {
+				if effectiveWidth > 10 {
+					line = line[:effectiveWidth-3] + "..."
+				} else {
+					line = line[:effectiveWidth]
+				}
 			}
 
 			// Color diff lines
@@ -717,7 +767,7 @@ func (m CommitModel) viewDiffNavigation() string {
 	var b strings.Builder
 
 	// Title
-	if m.cursor < len(m.items) {
+	if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
 		item := m.items[m.cursor]
 		title := fmt.Sprintf("📄 Viewing: %s/%s", item.FileChange.RepoAlias, item.FileChange.Path)
 		b.WriteString(commitTitleStyle.Render(title))
@@ -779,31 +829,39 @@ func (m CommitModel) viewDiffNavigation() string {
 	return b.String()
 }
 
-func (m CommitModel) viewDiff() string {
-	var b strings.Builder
-
-	if m.cursor < len(m.items) {
-		item := m.items[m.cursor]
-		b.WriteString(commitTitleStyle.Render(fmt.Sprintf("Diff: %s/%s", item.FileChange.RepoAlias, item.FileChange.Path)))
-		b.WriteString("\n\n")
+// normalizeCursor ensures the cursor is within valid bounds
+func (m *CommitModel) normalizeCursor() {
+	if len(m.items) == 0 {
+		m.cursor = 0
+		return
 	}
 
-	b.WriteString(diffViewStyle.Render(m.diffViewport.View()))
-	b.WriteString("\n")
-
-	b.WriteString(helpCommitStyle.Render("↑/↓ scroll • Esc/Q to go back"))
-
-	return b.String()
+	if m.cursor < 0 {
+		m.cursor = 0
+	} else if m.cursor >= len(m.items) {
+		m.cursor = len(m.items) - 1
+	}
 }
 
 // loadCurrentDiff loads the diff for the currently selected file
 func (m *CommitModel) loadCurrentDiff() {
-	if m.cursor >= len(m.items) {
+	// Normalize cursor first
+	m.normalizeCursor()
+	if m.cursor >= len(m.items) || m.cursor < 0 {
+		m.currentDiff = ""
 		return
 	}
 
 	item := m.items[m.cursor]
-	repo := m.repos[item.FileChange.RepoAlias][0]
+
+	// Safety check for repo existence
+	repos, exists := m.repos[item.FileChange.RepoAlias]
+	if !exists || len(repos) == 0 {
+		m.currentDiff = fmt.Sprintf("Error: repository %s not found", item.FileChange.RepoAlias)
+		return
+	}
+
+	repo := repos[0]
 
 	// For new files (untracked), show the complete content directly
 	if item.FileChange.Status == "??" {
