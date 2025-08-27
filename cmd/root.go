@@ -11,23 +11,29 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/viniciusamelio/alfred/internal/config"
 	"github.com/viniciusamelio/alfred/internal/context"
+	"github.com/viniciusamelio/alfred/internal/git"
 	"github.com/viniciusamelio/alfred/internal/pubspec"
 	"github.com/viniciusamelio/alfred/internal/tui"
+	"github.com/viniciusamelio/alfred/internal/worktree"
 )
 
 var CLI struct {
-	Debug      bool           `help:"Enable debug mode" default:"false"`
-	Context    ContextCmd     `cmd:"" help:"Manage project contexts"`
-	Init       InitCmd        `cmd:"" help:"Initialize alfred in current directory"`
-	Scan       ScanCmd        `cmd:"" help:"Scan directory and auto-configure repositories"`
-	Status     StatusCmd      `cmd:"" help:"Show current context and repository status"`
-	List       ListCmd        `cmd:"" help:"List available contexts"`
-	Switch     SwitchCmd      `cmd:"" help:"Switch to a different context"`
-	Create     CreateCmd      `cmd:"" help:"Create a new context"`
-	Delete     DeleteCmd      `cmd:"" help:"Delete contexts"`
-	Prepare    PrepareCmd     `cmd:"" help:"Prepare repository for production by reverting to git dependencies"`
-	MainBranch MainBranchCmd  `cmd:"" help:"Set the main branch used when switching to main context"`
-	Version    VersionCmd     `cmd:"" help:"Show version information"`
+	Debug      bool          `help:"Enable debug mode" default:"false"`
+	Context    ContextCmd    `cmd:"" help:"Manage project contexts"`
+	Init       InitCmd       `cmd:"" help:"Initialize alfred in current directory"`
+	Scan       ScanCmd       `cmd:"" help:"Scan directory and auto-configure repositories"`
+	Status     StatusCmd     `cmd:"" help:"Show current context and repository status"`
+	List       ListCmd       `cmd:"" help:"List available contexts"`
+	Switch     SwitchCmd     `cmd:"" help:"Switch to a different context"`
+	Create     CreateCmd     `cmd:"" help:"Create a new context"`
+	Delete     DeleteCmd     `cmd:"" help:"Delete contexts"`
+	Prepare    PrepareCmd    `cmd:"" help:"Prepare repository for production by reverting to git dependencies"`
+	MainBranch MainBranchCmd `cmd:"" help:"Set the main branch used when switching to main context"`
+	Commit     CommitCmd     `cmd:"" help:"Interactive commit interface for all repositories in current context"`
+	Push       PushCmd       `cmd:"" help:"Push changes to remote for all repositories in current context"`
+	Pull       PullCmd       `cmd:"" help:"Pull changes from remote for all repositories in current context"`
+	Diagnose   DiagnoseCmd   `cmd:"" help:"Diagnose git status and upstream configuration for current context"`
+	Version    VersionCmd    `cmd:"" help:"Show version information"`
 }
 
 type ContextCmd struct {
@@ -45,27 +51,27 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 	if _, err := os.Stat(filepath.Join(".", ".alfred", "alfred.yaml")); err == nil {
 		fmt.Println("⚠️  Alfred is already initialized in this directory.")
 		fmt.Print("Do you want to overwrite the existing configuration? (y/N): ")
-		
+
 		var response string
 		fmt.Scanln(&response)
-		
+
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 			fmt.Println("Operation cancelled.")
 			return nil
 		}
 		fmt.Println()
 	}
-	
+
 	// Scan for Dart/Flutter packages
 	packages, err := c.scanForDartPackages()
 	if err != nil {
 		return fmt.Errorf("failed to scan for packages: %w", err)
 	}
-	
+
 	if len(packages) == 0 {
 		return fmt.Errorf("no Dart/Flutter packages found in current directory")
 	}
-	
+
 	// Convert to TUI format
 	tuiPackages := make([]tui.PackageInfo, len(packages))
 	for i, pkg := range packages {
@@ -74,13 +80,13 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 			Path: pkg.Path,
 		}
 	}
-	
+
 	// Use TUI to select master repository
 	masterAlias, err := tui.RunPackageSelector(tuiPackages)
 	if err != nil {
 		return fmt.Errorf("failed to select master repository: %w", err)
 	}
-	
+
 	// Find the selected package to get the correct identifier
 	var masterRepo *DartPackage
 	for _, pkg := range packages {
@@ -89,28 +95,28 @@ func (c *ScanCmd) Run(ctx *kong.Context) error {
 			break
 		}
 	}
-	
+
 	if masterRepo == nil {
 		return fmt.Errorf("master repository not found in packages")
 	}
-	
+
 	// Use alias if set, otherwise use name
 	masterIdentifier := masterRepo.Alias
 	if masterIdentifier == "" {
 		masterIdentifier = masterRepo.Name
 	}
-	
+
 	// Create alfred configuration
 	mainBranch, err := c.createAlfredConfig(packages, masterIdentifier)
 	if err != nil {
 		return fmt.Errorf("failed to create alfred configuration: %w", err)
 	}
-	
+
 	fmt.Printf("\n✅ Alfred configured successfully with %d repositories\n", len(packages))
 	fmt.Printf("✅ Master repository: %s\n", masterIdentifier)
 	fmt.Printf("✅ Main branch: %s\n", mainBranch)
 	fmt.Println("✅ You can now use 'alfred switch <context-name>' to create and switch contexts")
-	
+
 	return nil
 }
 
@@ -122,36 +128,36 @@ type DartPackage struct {
 
 func (c *ScanCmd) scanForDartPackages() ([]DartPackage, error) {
 	var packages []DartPackage
-	
+
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read current directory: %w", err)
 	}
-	
+
 	for _, entry := range entries {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		
+
 		pubspecPath := filepath.Join(entry.Name(), "pubspec.yaml")
 		if _, err := os.Stat(pubspecPath); os.IsNotExist(err) {
 			continue
 		}
-		
+
 		// Read package name from pubspec.yaml
 		packageName, err := pubspec.ExtractPackageNameFromFile(pubspecPath)
 		if err != nil {
 			fmt.Printf("Warning: Could not read package name from %s: %v\n", pubspecPath, err)
 			continue
 		}
-		
+
 		packages = append(packages, DartPackage{
 			Name:  packageName,
 			Alias: "", // Will be set by user if they want a nickname
 			Path:  "./" + entry.Name(),
 		})
 	}
-	
+
 	return packages, nil
 }
 
@@ -160,14 +166,14 @@ func promptForMainBranch() (string, error) {
 	fmt.Println("\nSet the main branch name:")
 	fmt.Println("This branch will be used when running 'alfred switch main'")
 	fmt.Print("Enter main branch name (default: main): ")
-	
+
 	var branchName string
 	fmt.Scanln(&branchName)
-	
+
 	if branchName == "" {
 		branchName = "main"
 	}
-	
+
 	return branchName, nil
 }
 
@@ -177,13 +183,13 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 	if err := os.MkdirAll(alfredDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create .alfred directory: %w", err)
 	}
-	
+
 	// Get main branch from user
 	mainBranch, err := promptForMainBranch()
 	if err != nil {
 		return "", fmt.Errorf("failed to get main branch: %w", err)
 	}
-	
+
 	// Create config
 	var configContent strings.Builder
 	configContent.WriteString("repos:\n")
@@ -194,17 +200,17 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 		}
 		configContent.WriteString(fmt.Sprintf("    path: %s\n", pkg.Path))
 	}
-	
+
 	configContent.WriteString(fmt.Sprintf("\nmaster: %s\n", masterAlias))
 	configContent.WriteString("mode: worktree\n")
 	configContent.WriteString(fmt.Sprintf("main_branch: %s\n", mainBranch))
 	configContent.WriteString("\ncontexts: {}\n")
-	
+
 	configPath := filepath.Join(alfredDir, "alfred.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent.String()), 0644); err != nil {
 		return "", fmt.Errorf("failed to write alfred.yaml: %w", err)
 	}
-	
+
 	// Update .gitignore
 	if err := c.updateGitignore(); err != nil {
 		fmt.Printf("⚠️  Warning: failed to update .gitignore: %v\n", err)
@@ -212,7 +218,7 @@ func (c *ScanCmd) createAlfredConfig(packages []DartPackage, masterAlias string)
 	} else {
 		fmt.Println("✅ Updated .gitignore to ignore .alfred directory")
 	}
-	
+
 	return mainBranch, nil
 }
 
@@ -257,11 +263,11 @@ type InitCmd struct{}
 
 func (c *InitCmd) Run(ctx *kong.Context) error {
 	fmt.Println("Initializing alfred...")
-	
+
 	// Check if .alfred directory already exists
 	alfredDir := filepath.Join(".", ".alfred")
 	configPath := filepath.Join(alfredDir, "alfred.yaml")
-	
+
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		return fmt.Errorf("alfred is already initialized (.alfred/alfred.yaml exists)")
 	}
@@ -271,10 +277,10 @@ func (c *InitCmd) Run(ctx *kong.Context) error {
 	fmt.Println("  1. Scan directory for existing Dart/Flutter packages (recommended)")
 	fmt.Println("  2. Create with sample configuration")
 	fmt.Print("Enter your choice (1 or 2): ")
-	
+
 	var choice string
 	fmt.Scanln(&choice)
-	
+
 	if choice == "1" {
 		// Use scan functionality
 		scanCmd := &ScanCmd{}
@@ -431,7 +437,7 @@ func (c *ListCmd) Run(ctx *kong.Context) error {
 
 	fmt.Println("Available contexts:")
 	currentContext, _ := manager.GetCurrentContext()
-	
+
 	for _, contextName := range contexts {
 		if contextName == "main" {
 			if contextName == currentContext {
@@ -463,7 +469,7 @@ func (c *SwitchCmd) Run(ctx *kong.Context) error {
 	contexts := manager.ListContexts()
 
 	var targetContext string
-	
+
 	if c.Context != "" {
 		found := false
 		for _, ctx := range contexts {
@@ -472,19 +478,19 @@ func (c *SwitchCmd) Run(ctx *kong.Context) error {
 				break
 			}
 		}
-		
+
 		if !found {
 			// Context doesn't exist - offer to create it (unless it's a reserved name)
 			if c.Context == "main" || c.Context == "master" {
 				return fmt.Errorf("'%s' is a built-in context that should already be available", c.Context)
 			}
-			
+
 			fmt.Printf("Context '%s' not found.\n", c.Context)
 			fmt.Printf("Would you like to create it? (y/N): ")
-			
+
 			var response string
 			fmt.Scanln(&response)
-			
+
 			if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
 				if err := c.createNewContext(cfg, c.Context); err != nil {
 					return fmt.Errorf("failed to create context: %w", err)
@@ -525,12 +531,12 @@ func (c *SwitchCmd) Run(ctx *kong.Context) error {
 			}
 			return err
 		}
-		
+
 		if selectedContext == "" {
 			fmt.Println("No context selected.")
 			return nil
 		}
-		
+
 		targetContext = selectedContext
 	}
 
@@ -590,42 +596,42 @@ func (c *SwitchCmd) interactiveRepoSelection(repoAliases []string) ([]string, er
 	for i, alias := range repoAliases {
 		fmt.Printf("  %d. %s\n", i+1, alias)
 	}
-	
+
 	fmt.Printf("Enter repository numbers (comma-separated, e.g., 1,2,3): ")
 	var input string
 	fmt.Scanln(&input)
-	
+
 	if input == "" {
 		return nil, fmt.Errorf("no repositories selected")
 	}
-	
+
 	// Parse the input
 	parts := strings.Split(strings.ReplaceAll(input, " ", ""), ",")
 	var selectedRepos []string
-	
+
 	for _, part := range parts {
 		if part == "" {
 			continue
 		}
-		
+
 		var index int
 		if _, err := fmt.Sscanf(part, "%d", &index); err != nil {
 			fmt.Printf("Invalid input: %s\n", part)
 			continue
 		}
-		
+
 		if index < 1 || index > len(repoAliases) {
 			fmt.Printf("Invalid repository number: %d\n", index)
 			continue
 		}
-		
+
 		selectedRepos = append(selectedRepos, repoAliases[index-1])
 	}
-	
+
 	if len(selectedRepos) == 0 {
 		return nil, fmt.Errorf("no valid repositories selected")
 	}
-	
+
 	return selectedRepos, nil
 }
 
@@ -669,9 +675,9 @@ func (c *CreateCmd) Run(ctx *kong.Context) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("✅ Created context '%s' with repositories: %s\n", 
+	fmt.Printf("✅ Created context '%s' with repositories: %s\n",
 		contextName, strings.Join(selectedRepos, ", "))
-	
+
 	return nil
 }
 
@@ -701,7 +707,7 @@ func (c *DeleteCmd) Run(ctx *kong.Context) error {
 			if contextName == "main" || contextName == "master" {
 				return fmt.Errorf("cannot delete built-in main context")
 			}
-			
+
 			found := false
 			for _, ctx := range allContexts {
 				if ctx == contextName {
@@ -758,7 +764,7 @@ type PrepareCmd struct {
 
 func (c *PrepareCmd) Run(ctx *kong.Context) error {
 	logger := log.Default()
-	
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return err
@@ -796,22 +802,22 @@ func (c *PrepareCmd) Run(ctx *kong.Context) error {
 	// Get all dependencies that might need to be reverted
 	// Check for dependencies with commented git configuration
 	dependenciesReverted := 0
-	
+
 	// Get all repositories from config to check for dependencies
 	allRepos := cfg.Repos
 	for _, repo := range allRepos {
 		dependencyName := repo.Name
-		
+
 		// Try to uncomment git dependency and remove path
 		if err := pubspecFile.UncommentGitDependencyAndRemovePath(dependencyName); err != nil {
-			logger.Debugf("No commented git dependency found for %s in %s: %v", 
+			logger.Debugf("No commented git dependency found for %s in %s: %v",
 				dependencyName, repoIdentifier, err)
 		} else {
 			dependenciesReverted++
 			fmt.Printf("  ✅ Reverted %s dependency to git reference\n", dependencyName)
 		}
 	}
-	
+
 	if dependenciesReverted == 0 {
 		fmt.Printf("⚠️  No dependencies to revert in %s. Repository may already be prepared.\n", repoIdentifier)
 		return nil
@@ -833,7 +839,7 @@ func (c *PrepareCmd) Run(ctx *kong.Context) error {
 	if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
 		cmd := exec.Command("flutter", "pub", "get")
 		cmd.Dir = targetRepo.Path
-		
+
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			fmt.Printf("⚠️  flutter pub get failed: %v\nOutput: %s\n", err, string(output))
@@ -891,6 +897,370 @@ func (c *MainBranchCmd) Run(ctx *kong.Context) error {
 
 	fmt.Printf("✅ Main branch set to: %s\n", branchName)
 	fmt.Printf("Now 'alfred switch main' will switch all repositories to the '%s' branch\n", branchName)
+
+	return nil
+}
+
+type CommitCmd struct{}
+
+func (c *CommitCmd) Run(ctx *kong.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	manager := context.NewManager(cfg)
+	currentContext, err := manager.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("failed to get current context: %w", err)
+	}
+
+	if currentContext == "" {
+		return fmt.Errorf("no context is currently active. Use 'alfred switch' to activate a context")
+	}
+
+	// Get repositories for the current context
+	repos, err := cfg.GetContextRepos(currentContext)
+	if err != nil {
+		return fmt.Errorf("failed to get context repositories: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no repositories in current context")
+	}
+
+	// Create git repo instances for each repository
+	gitRepos := make(map[string]*git.GitRepo)
+	for _, repo := range repos {
+		repoIdentifier := repo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = repo.Name
+		}
+
+		// Determine the correct path based on context and mode
+		var repoPath string
+		if cfg.IsBranchMode() || repo.Alias == cfg.Master {
+			// In branch mode or for master repo, use original path
+			repoPath = repo.Path
+		} else {
+			// In worktree mode for non-master repos, use worktree path
+			worktreeManager := worktree.NewManager(cfg)
+			repoPath = worktreeManager.GetWorktreePath(repo, currentContext)
+		}
+
+		gitRepos[repoIdentifier] = git.NewGitRepo(repoPath)
+	}
+
+	// Run the interactive commit interface
+	if err := tui.RunCommitInterface(gitRepos); err != nil {
+		return fmt.Errorf("commit interface error: %w", err)
+	}
+
+	return nil
+}
+
+type PushCmd struct {
+	SetUpstream bool `help:"Force set upstream branch even if already configured" short:"u"`
+}
+
+func (c *PushCmd) Run(ctx *kong.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	manager := context.NewManager(cfg)
+	currentContext, err := manager.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("failed to get current context: %w", err)
+	}
+
+	if currentContext == "" {
+		return fmt.Errorf("no context is currently active. Use 'alfred switch' to activate a context")
+	}
+
+	// Get repositories for the current context
+	repos, err := cfg.GetContextRepos(currentContext)
+	if err != nil {
+		return fmt.Errorf("failed to get context repositories: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no repositories in current context")
+	}
+
+	fmt.Printf("Pushing changes for context '%s'...\n", currentContext)
+	fmt.Println()
+
+	var errors []string
+	var successes []string
+
+	for _, repo := range repos {
+		repoIdentifier := repo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = repo.Name
+		}
+
+		// Determine the correct path based on context and mode
+		var repoPath string
+		if cfg.IsBranchMode() || repo.Alias == cfg.Master {
+			// In branch mode or for master repo, use original path
+			repoPath = repo.Path
+		} else {
+			// In worktree mode for non-master repos, use worktree path
+			worktreeManager := worktree.NewManager(cfg)
+			repoPath = worktreeManager.GetWorktreePath(repo, currentContext)
+		}
+
+		fmt.Printf("📤 Pushing %s...", repoIdentifier)
+
+		// Create git repo instance and use the new push method
+		gitRepo := git.NewGitRepo(repoPath)
+
+		var err error
+		if c.SetUpstream {
+			// Force set upstream even if already configured
+			currentBranch, branchErr := gitRepo.GetCurrentBranch()
+			if branchErr != nil {
+				fmt.Printf(" ❌\n")
+				errors = append(errors, fmt.Sprintf("%s: failed to get current branch: %v", repoIdentifier, branchErr))
+				continue
+			}
+
+			if setErr := gitRepo.SetUpstream("origin", currentBranch); setErr != nil {
+				fmt.Printf(" ❌\n")
+				errors = append(errors, fmt.Sprintf("%s: failed to set upstream: %v", repoIdentifier, setErr))
+				continue
+			}
+
+			// Now do a regular push
+			cmd := exec.Command("git", "-C", repoPath, "push")
+			if pushErr := cmd.Run(); pushErr != nil {
+				fmt.Printf(" ❌\n")
+				errors = append(errors, fmt.Sprintf("%s: failed to push: %v", repoIdentifier, pushErr))
+				continue
+			}
+		} else {
+			// Use the automatic upstream push method
+			err = gitRepo.PushWithUpstream("origin")
+		}
+
+		if err != nil {
+			fmt.Printf(" ❌\n")
+			errors = append(errors, fmt.Sprintf("%s: %v", repoIdentifier, err))
+		} else {
+			fmt.Printf(" ✅\n")
+			successes = append(successes, repoIdentifier)
+		}
+	}
+
+	fmt.Println()
+
+	// Show results
+	if len(successes) > 0 {
+		fmt.Printf("✅ Successfully pushed %d repositories: %s\n", len(successes), strings.Join(successes, ", "))
+	}
+
+	if len(errors) > 0 {
+		fmt.Printf("❌ Failed to push %d repositories:\n", len(errors))
+		for _, err := range errors {
+			fmt.Printf("  %s\n", err)
+		}
+		return fmt.Errorf("push failed for some repositories")
+	}
+
+	return nil
+}
+
+type PullCmd struct {
+	Rebase bool `help:"Use rebase instead of merge" short:"r" default:"true"`
+}
+
+func (c *PullCmd) Run(ctx *kong.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	manager := context.NewManager(cfg)
+	currentContext, err := manager.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("failed to get current context: %w", err)
+	}
+
+	if currentContext == "" {
+		return fmt.Errorf("no context is currently active. Use 'alfred switch' to activate a context")
+	}
+
+	// Get repositories for the current context
+	repos, err := cfg.GetContextRepos(currentContext)
+	if err != nil {
+		return fmt.Errorf("failed to get context repositories: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no repositories in current context")
+	}
+
+	fmt.Printf("Pulling changes for context '%s'...\n", currentContext)
+	fmt.Println()
+
+	var errors []string
+	var successes []string
+
+	for _, repo := range repos {
+		repoIdentifier := repo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = repo.Name
+		}
+
+		// Determine the correct path based on context and mode
+		var repoPath string
+		if cfg.IsBranchMode() || repo.Alias == cfg.Master {
+			// In branch mode or for master repo, use original path
+			repoPath = repo.Path
+		} else {
+			// In worktree mode for non-master repos, use worktree path
+			worktreeManager := worktree.NewManager(cfg)
+			repoPath = worktreeManager.GetWorktreePath(repo, currentContext)
+		}
+
+		fmt.Printf("📥 Pulling %s...", repoIdentifier)
+
+		// Create git repo instance and use the new pull method with automatic upstream
+		gitRepo := git.NewGitRepo(repoPath)
+		err := gitRepo.Pull(c.Rebase)
+
+		if err != nil {
+			fmt.Printf(" ❌\n")
+			errors = append(errors, fmt.Sprintf("%s: %v", repoIdentifier, err))
+		} else {
+			fmt.Printf(" ✅\n")
+			successes = append(successes, repoIdentifier)
+		}
+	}
+
+	fmt.Println()
+
+	// Show results
+	if len(successes) > 0 {
+		fmt.Printf("✅ Successfully pulled %d repositories: %s\n", len(successes), strings.Join(successes, ", "))
+	}
+
+	if len(errors) > 0 {
+		fmt.Printf("❌ Failed to pull %d repositories:\n", len(errors))
+		for _, err := range errors {
+			fmt.Printf("  %s\n", err)
+		}
+		return fmt.Errorf("pull failed for some repositories")
+	}
+
+	return nil
+}
+
+type DiagnoseCmd struct{}
+
+func (c *DiagnoseCmd) Run(ctx *kong.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	manager := context.NewManager(cfg)
+	currentContext, err := manager.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("failed to get current context: %w", err)
+	}
+
+	if currentContext == "" {
+		return fmt.Errorf("no context is currently active. Use 'alfred switch' to activate a context")
+	}
+
+	// Get repositories for the current context
+	repos, err := cfg.GetContextRepos(currentContext)
+	if err != nil {
+		return fmt.Errorf("failed to get context repositories: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no repositories in current context")
+	}
+
+	fmt.Printf("🔍 Diagnosing context '%s'...\n", currentContext)
+	fmt.Println()
+
+	for _, repo := range repos {
+		repoIdentifier := repo.Alias
+		if repoIdentifier == "" {
+			repoIdentifier = repo.Name
+		}
+
+		// Determine the correct path based on context and mode
+		var repoPath string
+		if cfg.IsBranchMode() || repo.Alias == cfg.Master {
+			// In branch mode or for master repo, use original path
+			repoPath = repo.Path
+		} else {
+			// In worktree mode for non-master repos, use worktree path
+			worktreeManager := worktree.NewManager(cfg)
+			repoPath = worktreeManager.GetWorktreePath(repo, currentContext)
+		}
+
+		fmt.Printf("📁 Repository: %s\n", repoIdentifier)
+		fmt.Printf("   Path: %s\n", repoPath)
+
+		gitRepo := git.NewGitRepo(repoPath)
+
+		// Check if it's a valid git repo
+		if !gitRepo.IsGitRepo() {
+			fmt.Printf("   ❌ Not a valid git repository\n")
+			fmt.Println()
+			continue
+		}
+
+		// Get current branch
+		currentBranch, err := gitRepo.GetCurrentBranch()
+		if err != nil {
+			fmt.Printf("   ❌ Failed to get current branch: %v\n", err)
+		} else {
+			fmt.Printf("   🌿 Current branch: %s\n", currentBranch)
+		}
+
+		// Check upstream configuration
+		hasUpstream, err := gitRepo.HasUpstream()
+		if err != nil {
+			fmt.Printf("   ❌ Failed to check upstream: %v\n", err)
+		} else if hasUpstream {
+			fmt.Printf("   ✅ Upstream configured\n")
+		} else {
+			fmt.Printf("   ⚠️  No upstream configured\n")
+
+			// Check if remote branch exists
+			if currentBranch != "" {
+				checkCmd := exec.Command("git", "-C", repoPath, "ls-remote", "--heads", "origin", currentBranch)
+				checkOutput, checkErr := checkCmd.Output()
+				if checkErr != nil {
+					fmt.Printf("   ❌ Failed to check remote branch: %v\n", checkErr)
+				} else if len(strings.TrimSpace(string(checkOutput))) == 0 {
+					fmt.Printf("   ⚠️  Remote branch 'origin/%s' does not exist\n", currentBranch)
+				} else {
+					fmt.Printf("   ✅ Remote branch 'origin/%s' exists\n", currentBranch)
+				}
+			}
+		}
+
+		// Check for uncommitted changes
+		hasChanges, err := gitRepo.HasUncommittedChanges()
+		if err != nil {
+			fmt.Printf("   ❌ Failed to check for changes: %v\n", err)
+		} else if hasChanges {
+			fmt.Printf("   ⚠️  Has uncommitted changes\n")
+		} else {
+			fmt.Printf("   ✅ Working directory clean\n")
+		}
+
+		fmt.Println()
+	}
 
 	return nil
 }
