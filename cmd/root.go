@@ -441,7 +441,11 @@ func (c *ListCmd) Run(ctx *kong.Context) error {
 	}
 
 	fmt.Println("Available contexts:")
-	currentContext, _ := manager.GetCurrentContext()
+	currentContext, err := manager.GetCurrentContext()
+	if err != nil {
+		// If we can't get current context, just continue without highlighting it
+		currentContext = ""
+	}
 
 	for _, contextName := range contexts {
 		switch contextName {
