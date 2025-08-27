@@ -205,7 +205,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
     steps:
       - name: Update Homebrew formula
-        uses: mislav/bump-homebrew-formula-action@v2
+        uses: mislav/bump-homebrew-formula-action@v3
         with:
           formula-name: alfred
           homebrew-tap: viniciusamelio/homebrew-tap
