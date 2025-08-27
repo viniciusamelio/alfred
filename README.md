@@ -29,11 +29,13 @@ curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/
 ```
 
 Or with wget:
+
 ```bash
 wget -qO- https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/install.sh | bash
 ```
 
 **Security Features:**
+
 - ✅ Integrity verification with checksums
 - ✅ Never runs as root for security
 - ✅ Automatic OS and architecture detection
@@ -56,6 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/viniciusamelio/alfred/main/scripts/
 ### Alternative Installation Methods
 
 **Go Install:**
+
 ```bash
 go install github.com/viniciusamelio/alfred@latest
 ```
@@ -64,6 +67,7 @@ go install github.com/viniciusamelio/alfred@latest
 Download pre-built binaries from [releases page](https://github.com/viniciusamelio/alfred/releases/latest)
 
 **Build from Source:**
+
 ```bash
 git clone https://github.com/viniciusamelio/alfred
 cd alfred
@@ -111,6 +115,7 @@ alfred diagnose
 ## 📖 Usage
 
 ### Context Management
+
 ```bash
 alfred list                    # List available contexts
 alfred create                  # Create a new context
@@ -120,6 +125,7 @@ alfred status                  # Show current status
 ```
 
 ### Repository Operations
+
 ```bash
 alfred commit                  # Interactive commit interface
 alfred push                    # Push with automatic upstream
@@ -128,6 +134,7 @@ alfred diagnose                # Troubleshoot repository issues
 ```
 
 ### Advanced Features
+
 ```bash
 alfred prepare                 # Prepare for production deployment
 alfred main-branch <branch>    # Set main branch name
@@ -136,6 +143,7 @@ alfred main-branch <branch>    # Set main branch name
 ## 🛠️ Development
 
 ### Prerequisites
+
 - Go 1.21+
 - Make
 - Git

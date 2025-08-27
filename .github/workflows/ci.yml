@@ -2,89 +2,88 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
-    tags: [ 'v*' ]
+    branches: [main, develop]
+    tags: ["v*"]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 env:
-  GO_VERSION: '1.21'
+  GO_VERSION: "1.21"
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
-    - name: Download dependencies
-      run: make deps
+      - name: Download dependencies
+        run: make deps
 
-    - name: Run tests
-      run: make test
+      - name: Run tests
+        run: make test
 
-    - name: Run tests with coverage
-      run: make coverage
+      - name: Run tests with coverage
+        run: make coverage
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
 
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: Run Gosec Security Scanner
-      run: |
-        curl -sfL https://raw.githubusercontent.com/securecodewarrior/gosec/master/install.sh | sh -s -- -b /tmp v2.20.0
-        /tmp/gosec ./...
+      - name: Run Gosec Security Scanner
+        run: |
+          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+          gosec ./...
 
   build:
     name: Build
@@ -98,46 +97,46 @@ jobs:
           - goos: windows
             goarch: arm64
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: Get version
-      id: version
-      run: |
-        if [[ $GITHUB_REF == refs/tags/* ]]; then
-          VERSION=${GITHUB_REF#refs/tags/}
-        else
-          VERSION=$(git describe --tags --always --dirty)
-        fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Get version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=$(git describe --tags --always --dirty)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Build binary
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-        VERSION: ${{ steps.version.outputs.version }}
-      run: |
-        BINARY_NAME=alfred
-        if [ "$GOOS" = "windows" ]; then
-          BINARY_NAME="${BINARY_NAME}.exe"
-        fi
-        
-        mkdir -p dist
-        go build -ldflags "-X main.Version=$VERSION -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.Commit=$(git rev-parse --short HEAD)" \
-          -o dist/${BINARY_NAME}-${GOOS}-${GOARCH}${BINARY_NAME##alfred} .
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          BINARY_NAME=alfred
+          if [ "$GOOS" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: alfred-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: dist/
+          mkdir -p dist
+          go build -ldflags "-X main.Version=$VERSION -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.Commit=$(git rev-parse --short HEAD)" \
+            -o dist/${BINARY_NAME}-${GOOS}-${GOARCH}${BINARY_NAME##alfred} .
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alfred-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
 
   release:
     name: Release
@@ -145,69 +144,69 @@ jobs:
     needs: [build]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Prepare release assets
-      run: |
-        mkdir -p release
-        cd artifacts
-        
-        # Create archives for each platform
-        for dir in */; do
-          platform=$(echo $dir | sed 's/alfred-//' | sed 's/\///')
-          cd "$dir"
-          
-          if [[ $platform == *"windows"* ]]; then
-            zip -r "../../release/alfred-${GITHUB_REF#refs/tags/}-${platform}.zip" *
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cd artifacts
+
+          # Create archives for each platform
+          for dir in */; do
+            platform=$(echo $dir | sed 's/alfred-//' | sed 's/\///')
+            cd "$dir"
+            
+            if [[ $platform == *"windows"* ]]; then
+              zip -r "../../release/alfred-${GITHUB_REF#refs/tags/}-${platform}.zip" *
+            else
+              tar -czf "../../release/alfred-${GITHUB_REF#refs/tags/}-${platform}.tar.gz" *
+            fi
+            
+            cd ..
+          done
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract changelog for this version
+            awk '/^## \[/{if(p) exit; if(/\['${GITHUB_REF#refs/tags/}'\]/) p=1; next} p' CHANGELOG.md > release_notes.md
           else
-            tar -czf "../../release/alfred-${GITHUB_REF#refs/tags/}-${platform}.tar.gz" *
+            echo "Release ${GITHUB_REF#refs/tags/}" > release_notes.md
+            echo "" >> release_notes.md
+            echo "### Changes" >> release_notes.md
+            git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release_notes.md
           fi
-          
-          cd ..
-        done
 
-    - name: Generate changelog
-      id: changelog
-      run: |
-        if [ -f CHANGELOG.md ]; then
-          # Extract changelog for this version
-          awk '/^## \[/{if(p) exit; if(/\['${GITHUB_REF#refs/tags/}'\]/) p=1; next} p' CHANGELOG.md > release_notes.md
-        else
-          echo "Release ${GITHUB_REF#refs/tags/}" > release_notes.md
-          echo "" >> release_notes.md
-          echo "### Changes" >> release_notes.md
-          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release_notes.md
-        fi
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: release/*
-        body_path: release_notes.md
-        draft: false
-        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update install script
+        run: |
+          # Update the version in install script
+          sed -i "s/LATEST_VERSION=.*/LATEST_VERSION=\"${GITHUB_REF#refs/tags/}\"/" scripts/install.sh
 
-    - name: Update install script
-      run: |
-        # Update the version in install script
-        sed -i "s/LATEST_VERSION=.*/LATEST_VERSION=\"${GITHUB_REF#refs/tags/}\"/" scripts/install.sh
-        
-        # Commit and push the updated install script
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add scripts/install.sh
-        git commit -m "Update install script to version ${GITHUB_REF#refs/tags/}" || exit 0
-        git push origin HEAD:main || exit 0
+          # Commit and push the updated install script
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add scripts/install.sh
+          git commit -m "Update install script to version ${GITHUB_REF#refs/tags/}" || exit 0
+          git push origin HEAD:main || exit 0
 
   homebrew:
     name: Update Homebrew Formula
@@ -215,12 +214,12 @@ jobs:
     needs: [release]
     if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
     steps:
-    - name: Update Homebrew formula
-      uses: mislav/bump-homebrew-formula-action@v2
-      with:
-        formula-name: alfred
-        homebrew-tap: viniciusamelio/homebrew-tap
-        base-branch: main
-        download-url: https://github.com/viniciusamelio/alfred/releases/download/${{ github.ref_name }}/alfred-${{ github.ref_name }}-darwin-amd64.tar.gz
-      env:
-        COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
+      - name: Update Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v2
+        with:
+          formula-name: alfred
+          homebrew-tap: viniciusamelio/homebrew-tap
+          base-branch: main
+          download-url: https://github.com/viniciusamelio/alfred/releases/download/${{ github.ref_name }}/alfred-${{ github.ref_name }}-darwin-amd64.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
