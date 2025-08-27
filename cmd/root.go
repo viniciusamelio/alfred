@@ -499,7 +499,7 @@ func (c *SwitchCmd) Run(ctx *kong.Context) error {
 			fmt.Printf("Would you like to create it? (y/N): ")
 
 			var response string
-			fmt.Scanln(&response)
+			_, _ = fmt.Scanln(&response)
 
 			if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
 				if err := c.createNewContext(cfg, c.Context); err != nil {
@@ -609,7 +609,7 @@ func (c *SwitchCmd) interactiveRepoSelection(repoAliases []string) ([]string, er
 
 	fmt.Printf("Enter repository numbers (comma-separated, e.g., 1,2,3): ")
 	var input string
-	fmt.Scanln(&input)
+	_, _ = fmt.Scanln(&input)
 
 	if input == "" {
 		return nil, fmt.Errorf("no repositories selected")
@@ -844,7 +844,7 @@ func (c *PrepareCmd) Run(ctx *kong.Context) error {
 	// Optionally run flutter pub get
 	fmt.Print("Run 'flutter pub get' to update dependencies? (y/N): ")
 	var response string
-	fmt.Scanln(&response)
+	_, _ = fmt.Scanln(&response)
 
 	if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
 		cmd := exec.Command("flutter", "pub", "get")
@@ -883,7 +883,7 @@ func (c *MainBranchCmd) Run(ctx *kong.Context) error {
 			// If TUI fails (no TTY), ask for input via prompt
 			if strings.Contains(err.Error(), "TTY") || strings.Contains(err.Error(), "tty") {
 				fmt.Printf("Enter the main branch name (default: main): ")
-				fmt.Scanln(&branchName)
+				_, _ = fmt.Scanln(&branchName)
 				if branchName == "" {
 					branchName = "main"
 				}
