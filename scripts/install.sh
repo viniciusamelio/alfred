@@ -121,7 +121,35 @@ install_binary() {
     
     # Find the binary (it might have platform suffix)
     local binary_path
-    binary_path=$(find "$temp_dir" -name "${BINARY_NAME}*" -type f -executable | head -n1)
+    
+    # Try different methods to find executable files for cross-platform compatibility
+    # Method 1: Try -executable (GNU find)
+    binary_path=$(find "$temp_dir" -name "${BINARY_NAME}*" -type f -executable 2>/dev/null | head -n1)
+    
+    # Method 2: Try -perm +111 (older BSD find)
+    if [[ -z "$binary_path" ]]; then
+        binary_path=$(find "$temp_dir" -name "${BINARY_NAME}*" -type f -perm +111 2>/dev/null | head -n1)
+    fi
+    
+    # Method 3: Try -perm /111 (newer BSD find)
+    if [[ -z "$binary_path" ]]; then
+        binary_path=$(find "$temp_dir" -name "${BINARY_NAME}*" -type f -perm /111 2>/dev/null | head -n1)
+    fi
+    
+    # Method 4: Fallback - find any file and check if it's executable
+    if [[ -z "$binary_path" ]]; then
+        for file in $(find "$temp_dir" -name "${BINARY_NAME}*" -type f); do
+            if [[ -x "$file" ]]; then
+                binary_path="$file"
+                break
+            fi
+        done
+    fi
+    
+    # Method 5: Last resort - just find the file (we'll make it executable later)
+    if [[ -z "$binary_path" ]]; then
+        binary_path=$(find "$temp_dir" -name "${BINARY_NAME}*" -type f | head -n1)
+    fi
     
     if [[ ! -f "$binary_path" ]]; then
         log_error "Binary not found in archive"
