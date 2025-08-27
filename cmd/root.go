@@ -246,7 +246,11 @@ func (c *ScanCmd) updateGitignore() error {
 	if err != nil {
 		return fmt.Errorf("failed to open .gitignore: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("Warning: failed to close .gitignore file: %v\n", err)
+		}
+	}()
 
 	// Add newline before if file exists and doesn't end with newline
 	if existingContent != "" && !strings.HasSuffix(existingContent, "\n") {
@@ -366,7 +370,11 @@ func (c *InitCmd) updateGitignore() error {
 	if err != nil {
 		return fmt.Errorf("failed to open .gitignore: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("Warning: failed to close .gitignore file: %v\n", err)
+		}
+	}()
 
 	// Add newline before if file exists and doesn't end with newline
 	if existingContent != "" && !strings.HasSuffix(existingContent, "\n") {
