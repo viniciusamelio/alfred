@@ -133,7 +133,7 @@ jobs:
             -o dist/${BINARY_NAME}-${GOOS}-${GOARCH}${BINARY_NAME##alfred} .
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: alfred-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
